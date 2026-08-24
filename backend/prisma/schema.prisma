@@ -1,0 +1,186 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================
+// 1. FELHASZNÁLÓK ÉS CSOPORTOK
+// ==========================
+
+enum Szerepkor {
+  DIAK
+  TANAR
+  ADMIN
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  nev          String
+  email        String    @unique
+  jelszoHash   String    @map("jelszo_hash")
+  szerepkor    Szerepkor @default(DIAK)
+  csoportId    Int?      @map("csoport_id")
+  csoport      Group?    @relation("CsoportTagok", fields: [csoportId], references: [id])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  sajatCsoportok Group[]   @relation("TanarCsoportjai")
+  attempts       Attempt[]
+
+  @@map("users")
+}
+
+model Group {
+  id          Int      @id @default(autoincrement())
+  csoportNeve String   @map("csoport_neve")
+  tanarId     Int      @map("tanar_id")
+  tanar       User     @relation("TanarCsoportjai", fields: [tanarId], references: [id])
+  tagok       User[]   @relation("CsoportTagok")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("groups")
+}
+
+// ==========================
+// 2. KÉRDÉSBANK
+// ==========================
+
+model Category {
+  id        Int        @id @default(autoincrement())
+  nev       String
+  questions Question[]
+
+  @@map("categories")
+}
+
+enum ValaszTipus {
+  EGYSZERES   // csak egy helyes opció -> radio gomb a frontenden
+  TOBBSZOROS  // több helyes opció is lehet -> checkbox a frontenden
+}
+
+model Question {
+  id            Int             @id @default(autoincrement())
+  kategoriaId   Int             @map("kategoria_id")
+  kategoria     Category        @relation(fields: [kategoriaId], references: [id])
+  kerdesSzovege String          @map("kerdes_szovege")
+  kepUrl        String?         @map("kep_url")
+  magyarazat    String?
+  valaszTipus   ValaszTipus     @default(EGYSZERES) @map("valasz_tipus")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  options        Option[]
+  testQuestions  TestQuestion[]
+  studentAnswers StudentAnswer[]
+
+  @@map("questions")
+}
+
+model Option {
+  id            Int      @id @default(autoincrement())
+  kerdesId      Int      @map("kerdes_id")
+  kerdes        Question @relation(fields: [kerdesId], references: [id], onDelete: Cascade)
+  valaszSzovege String   @map("valasz_szovege")
+  helyesE       Boolean  @default(false) @map("helyes_e")
+  sorrend       Int      @default(0)
+
+  studentAnswerOptions StudentAnswerOption[]
+
+  @@map("options")
+}
+
+// ==========================
+// 3. TESZTEK
+// ==========================
+
+model Test {
+  id               Int            @id @default(autoincrement())
+  cim              String
+  leiras           String?
+  idoKorlatPercben Int?           @map("ido_korlat_percben")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  testQuestions TestQuestion[]
+  attempts      Attempt[]
+
+  @@map("tests")
+}
+
+model TestQuestion {
+  tesztId  Int      @map("teszt_id")
+  kerdesId Int      @map("kerdes_id")
+  sorrend  Int      @default(0)
+  pontszam Int      @default(1)
+
+  teszt  Test     @relation(fields: [tesztId], references: [id], onDelete: Cascade)
+  kerdes Question @relation(fields: [kerdesId], references: [id], onDelete: Cascade)
+
+  @@id([tesztId, kerdesId])
+  @@map("test_questions")
+}
+
+// ==========================
+// 4. KITÖLTÉSEK ÉS EREDMÉNYEK
+// ==========================
+
+enum AttemptStatusz {
+  FOLYAMATBAN
+  BEFEJEZVE
+  MEGSZAKITVA
+}
+
+model Attempt {
+  id             Int            @id @default(autoincrement())
+  diakId         Int            @map("diak_id")
+  tesztId        Int            @map("teszt_id")
+  kezdesIdeje    DateTime       @default(now()) @map("kezdes_ideje")
+  befejezesIdeje DateTime?      @map("befejezes_ideje")
+  osszpontszam   Int?           @map("osszpontszam")
+  statusz        AttemptStatusz @default(FOLYAMATBAN)
+
+  diak           User            @relation(fields: [diakId], references: [id])
+  teszt          Test            @relation(fields: [tesztId], references: [id])
+  studentAnswers StudentAnswer[]
+
+  @@map("attempts")
+}
+
+// Egy sor = "a diák válaszolt (vagy nem) erre a kérdésre ebben a kitöltésben"
+// Maga a kiválasztott opció (akár egy, akár több) a StudentAnswerOption táblában van.
+model StudentAnswer {
+  id         Int      @id @default(autoincrement())
+  kitoltesId Int      @map("kitoltes_id")
+  kerdesId   Int      @map("kerdes_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  kitoltes         Attempt               @relation(fields: [kitoltesId], references: [id], onDelete: Cascade)
+  kerdes           Question              @relation(fields: [kerdesId], references: [id])
+  valasztottOpciok StudentAnswerOption[]
+
+  // Egy diák egy kitöltésben csak egyszer válaszolhat egy adott kérdésre
+  @@unique([kitoltesId, kerdesId])
+  @@map("student_answers")
+}
+
+// Kapcsolótábla: melyik opció(ka)t jelölte be a diák egy adott válasznál.
+// Egyválasztós kérdésnél 1 sor tartozik egy StudentAnswer-hez, többválasztósnál több.
+model StudentAnswerOption {
+  id           Int @id @default(autoincrement())
+  diakValaszId Int @map("diak_valasz_id")
+  opcioId      Int @map("opcio_id")
+
+  diakValasz StudentAnswer @relation(fields: [diakValaszId], references: [id], onDelete: Cascade)
+  opcio      Option        @relation(fields: [opcioId], references: [id])
+
+  // Ugyanazt az opciót nem lehet kétszer bejelölni ugyanannál a válasznál
+  @@unique([diakValaszId, opcioId])
+  @@map("student_answer_options")
+}
