@@ -6,11 +6,10 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL!,
 });
 
-// Érdemes a db-t is exportálni, hogy a kód többi részén használhasd!
 export const db = drizzle({ client: pool }); 
 
-// ITT A VARÁZSLAT: import helyett export
-export * from './users';
-export * from './questions';
-export * from './tests';
-export * from './schema';
+// A .js kiterjesztések KÖTELEZŐEK az ESM modulrendszer miatt!
+export * from './users.js';
+export * from './questions.js';
+export * from './tests.js';
+export * from './schema.js';
