@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PassMed - Vezérlőpult</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Navigációs sáv -->
+        <nav class="navbar">
+            <div class="brand">PassMed</div>
+            <div class="user-info">
+                <span class="user-name" id="userName">Betöltés...</span>
+                <span class="user-role" id="userRole">-</span>
+                <button class="btn btn-sm btn-danger" id="logoutBtn">Kijelentkezés</button>
+            </div>
+        </nav>
+
+        <div id="alert" class="alert"></div>
+
+        <!-- Tesztek listája -->
+        <div class="card">
+            <h2>Elérhető tesztek</h2>
+            <ul class="test-list" id="testList">
+                <li>Betöltés...</li>
+            </ul>
+        </div>
+
+        <!-- Teszt kitöltése (rejtett) -->
+        <div id="testView" class="hidden">
+            <div class="card">
+                <h2 id="testTitle">Teszt</h2>
+                <p id="testDescription" style="color:#888; margin-bottom:20px;"></p>
+                <div id="questionsContainer"></div>
+                <button class="btn btn-primary" id="submitTestBtn">Beadás</button>
+            </div>
+        </div>
+
+        <!-- Eredmény (rejtett) -->
+        <div id="resultView" class="hidden">
+            <div class="result-box">
+                <div class="score-label">Eredményed</div>
+                <div class="score" id="resultScore">0/0</div>
+            </div>
+            <button class="btn btn-secondary" id="backToTestsBtn">Vissza a tesztekhez</button>
+        </div>
+
+        <!-- Saját kitöltéseim -->
+        <div class="card">
+            <h2>Kitöltéseim</h2>
+            <ul class="attempt-list" id="attemptList">
+                <li>Betöltés...</li>
+            </ul>
+        </div>
+
+        <!-- Tanár panel (csak TANAR/ADMIN) -->
+        <div id="teacherPanel" class="card hidden">
+            <h2>Tanári panel</h2>
+
+            <!-- Új teszt létrehozása -->
+            <div class="teacher-panel">
+                <h3>Új teszt létrehozása</h3>
+                <div class="form-row">
+                    <input type="text" id="newTestCim" placeholder="Teszt címe">
+                </div>
+                <div class="form-row">
+                    <textarea id="newTestLeiras" placeholder="Teszt leírása"></textarea>
+                </div>
+                <div class="form-row">
+                    <input type="number" id="newTestIdo" placeholder="Időkorlát (perc)">
+                </div>
+                <button class="btn btn-sm btn-primary" id="createTestBtn">Teszt létrehozása</button>
+            </div>
+
+            <!-- Új kategória -->
+            <div class="teacher-panel">
+                <h3>Új kategória</h3>
+                <div class="form-row">
+                    <input type="text" id="newCategoryNev" placeholder="Kategória neve">
+                </div>
+                <button class="btn btn-sm btn-primary" id="createCategoryBtn">Kategória létrehozása</button>
+            </div>
+
+            <!-- Új kérdés -->
+            <div class="teacher-panel">
+                <h3>Új kérdés</h3>
+                <div class="form-row">
+                    <select id="newQuestionKategoria">
+                        <option value="">Kategória kiválasztása...</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <textarea id="newQuestionSzoveg" placeholder="Kérdés szövege"></textarea>
+                </div>
+                <div class="form-row">
+                    <select id="newQuestionTipus">
+                        <option value="EGYSZERES">Egyszeres választás</option>
+                        <option value="TOBBSZOROS">Többszörös választás</option>
+                    </select>
+                </div>
+                <div id="optionsContainer"></div>
+                <button class="btn btn-sm btn-secondary" id="addOptionBtn">+ Opció hozzáadása</button>
+                <button class="btn btn-sm btn-primary" id="createQuestionBtn">Kérdés létrehozása</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 // PassMed - API segédfüggvények
-const API_BASE = '/api';
+const API_BASE = 'http://localhost:5000/api';
 
 // Token kezelés localStorage-ban
 export const getToken = () => localStorage.getItem('passmed_token');
