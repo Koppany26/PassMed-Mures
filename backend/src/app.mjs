@@ -1,7 +1,9 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import apiRoutes from './routes/apiRoutes.mjs'; // <-- Ezt add hozzá!
+import path from 'path';
+import { fileURLToPath } from 'url';
+import apiRoutes from './routes/apiRoutes.mjs';
 
 // Környezeti változók betöltése
 dotenv.config();
@@ -13,6 +15,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// --- STATIKUS FRONTEND KISZOLGÁLÁSA ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendPath = path.join(__dirname, '../../frontend');
+app.use(express.static(frontendPath));
+
 // --- ALAP VÉGPONT (Teszteléshez) ---
 app.get('/api/status', (req, res) => {
     res.status(200).json({ 
@@ -22,7 +30,7 @@ app.get('/api/status', (req, res) => {
 });
 
 // --- API ÚTVONALAK ---
-app.use('/api', apiRoutes); // <-- Ez kapcsolja be a /api/db-status végpontot
+app.use('/api', apiRoutes);
 
 // --- SZERVER INDÍTÁSA ---
 const PORT = process.env.PORT || 5000;

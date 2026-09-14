@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PassMed - Bejelentkezés</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1>PassMed</h1>
+            <p class="subtitle">Orvosi tesztelő platform</p>
+
+            <div id="alert" class="alert"></div>
+
+            <!-- Bejelentkezési űrlap -->
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" placeholder="koppanykollo3@gmail.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginJelszo">Jelszó</label>
+                    <input type="password" id="loginJelszo" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Bejelentkezés</button>
+            </form>
+
+            <button id="showRegister" class="btn btn-secondary">Regisztráció</button>
+
+            <!-- Regisztrációs űrlap (rejtett) -->
+            <form id="registerForm" class="hidden mt-20">
+                <div class="form-group">
+                    <label for="regNev">Teljes név</label>
+                    <input type="text" id="regNev" placeholder="Minta Mária" required>
+                </div>
+                <div class="form-group">
+                    <label for="regEmail">Email</label>
+                    <input type="email" id="regEmail" placeholder="koppanykollo3@gmail.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="regJelszo">Jelszó</label>
+                    <input type="password" id="regJelszo" placeholder="••••••••" minlength="6" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Regisztráció</button>
+            </form>
+
+            <button id="showLogin" class="btn btn-secondary hidden">Vissza a bejelentkezéshez</button>
+        </div>
+    </div>
+
+    <script type="module" src="js/auth.js"></script>
+</body>
+</html>
