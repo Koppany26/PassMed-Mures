@@ -1,7 +1,7 @@
 /* 
 Teszt kezelése
 */
-import { eq, desc, asc } from 'drizzle-orm';
+import { eq, desc, asc, and } from 'drizzle-orm';
 import { db } from '../db_drizzle/index.js';
 import { tests, testQuestions } from '../db_drizzle/tests.js';
 import { questions, options } from '../db_drizzle/questions.js';
@@ -20,16 +20,17 @@ export const getTests = async (req, res) => {
 // --- TESZT LÉTREHOZÁSA (TANAR/ADMIN) ---
 export const createTest = async (req, res) => {
     try {
-        const { cim, leiras, idoKorlatPercben } = req.body;
+        const { title, description, timeLimitMinutes } = req.body;
 
-        if (!cim || !cim.trim()) {
+        if (!title || !title.trim()) {
             return res.status(400).json({ success: false, message: 'A teszt címe kötelező.' });
         }
 
         const newTest = await db.insert(tests).values({
-            cim: cim.trim(),
-            leiras: leiras || null,
-            idoKorlatPercben: idoKorlatPercben || null,
+            title: title.trim(),
+            description: description || null,
+            timeLimitMinutes: timeLimitMinutes || null,
+            teacherId: req.user ? req.user.id : null,
         }).returning();
 
         return res.status(201).json({ success: true, message: 'Teszt létrehozva!', test: newTest[0] });
@@ -40,11 +41,11 @@ export const createTest = async (req, res) => {
 };
 
 // --- TESZT RÉSZLETEI (kérdésekkel) ---
-// DIAK szerepkör esetén a helyes válaszok rejtve maradnak
+// STUDENT szerepkör esetén a helyes válaszok rejtve maradnak
 export const getTestById = async (req, res) => {
     try {
         const { id } = req.params;
-        const isDiak = req.user && req.user.szerepkor === 'DIAK';
+        const isStudent = req.user && req.user.role === 'STUDENT';
 
         const foundTests = await db.select().from(tests).where(eq(tests.id, Number(id))).limit(1);
         if (foundTests.length === 0) {
@@ -54,26 +55,26 @@ export const getTestById = async (req, res) => {
 
         // Teszt kérdései sorrend szerint
         const tqList = await db.select().from(testQuestions)
-            .where(eq(testQuestions.tesztId, test.id))
-            .orderBy(asc(testQuestions.sorrend));
+            .where(eq(testQuestions.testId, test.id))
+            .orderBy(asc(testQuestions.order));
 
         // Kérdések és opciók betöltése
         const questionList = [];
         for (const tq of tqList) {
-            const qList = await db.select().from(questions).where(eq(questions.id, tq.kerdesId)).limit(1);
+            const qList = await db.select().from(questions).where(eq(questions.id, tq.questionId)).limit(1);
             if (qList.length === 0) continue;
             const q = qList[0];
 
-            const opts = await db.select().from(options).where(eq(options.kerdesId, q.id)).orderBy(asc(options.sorrend));
+            const opts = await db.select().from(options).where(eq(options.questionId, q.id)).orderBy(asc(options.order));
 
-            // DIAK-nak ne küldjük el a helyes válaszokat
-            const safeOpts = isDiak
-                ? opts.map(({ helyesE, ...rest }) => rest)
+            // STUDENT-nek ne küldjük el a helyes válaszokat
+            const safeOpts = isStudent
+                ? opts.map(({ isCorrect, ...rest }) => rest)
                 : opts;
 
             questionList.push({
                 ...q,
-                pontszam: tq.pontszam,
+                points: tq.points,
                 options: safeOpts,
             });
         }
@@ -89,9 +90,9 @@ export const getTestById = async (req, res) => {
 export const addQuestionToTest = async (req, res) => {
     try {
         const { id } = req.params;
-        const { kerdesId, sorrend, pontszam } = req.body;
+        const { questionId, order, points } = req.body;
 
-        if (!kerdesId) {
+        if (!questionId) {
             return res.status(400).json({ success: false, message: 'A kérdés ID kötelező.' });
         }
 
@@ -102,32 +103,34 @@ export const addQuestionToTest = async (req, res) => {
         }
 
         // Kérdés létezik-e?
-        const foundQuestions = await db.select().from(questions).where(eq(questions.id, Number(kerdesId))).limit(1);
+        const foundQuestions = await db.select().from(questions).where(eq(questions.id, Number(questionId))).limit(1);
         if (foundQuestions.length === 0) {
             return res.status(404).json({ success: false, message: 'Kérdés nem található.' });
         }
 
         // Duplikáció ellenőrzése
         const existing = await db.select().from(testQuestions)
-            .where(eq(testQuestions.tesztId, Number(id)))
-            .where(eq(testQuestions.kerdesId, Number(kerdesId)))
+            .where(and(
+                eq(testQuestions.testId, Number(id)),
+                eq(testQuestions.questionId, Number(questionId))
+            ))
             .limit(1);
         if (existing.length > 0) {
             return res.status(400).json({ success: false, message: 'Ez a kérdés már hozzá van adva a teszthez.' });
         }
 
         // Sorrend automatikus, ha nincs megadva
-        let finalSorrend = sorrend;
-        if (finalSorrend === undefined) {
-            const countResult = await db.select().from(testQuestions).where(eq(testQuestions.tesztId, Number(id)));
-            finalSorrend = countResult.length;
+        let finalOrder = order;
+        if (finalOrder === undefined) {
+            const countResult = await db.select().from(testQuestions).where(eq(testQuestions.testId, Number(id)));
+            finalOrder = countResult.length;
         }
 
         const newTQ = await db.insert(testQuestions).values({
-            tesztId: Number(id),
-            kerdesId: Number(kerdesId),
-            sorrend: finalSorrend,
-            pontszam: pontszam || 1,
+            testId: Number(id),
+            questionId: Number(questionId),
+            order: finalOrder,
+            points: points || 1,
         }).returning();
 
         return res.status(201).json({ success: true, message: 'Kérdés hozzáadva a teszthez!', testQuestion: newTQ[0] });
@@ -140,19 +143,23 @@ export const addQuestionToTest = async (req, res) => {
 // --- KÉRDÉS ELTÁVOLÍTÁSA TESZTBŐL (TANAR/ADMIN) ---
 export const removeQuestionFromTest = async (req, res) => {
     try {
-        const { id, kerdesId } = req.params;
+        const { id, questionId } = req.params;
 
         const existing = await db.select().from(testQuestions)
-            .where(eq(testQuestions.tesztId, Number(id)))
-            .where(eq(testQuestions.kerdesId, Number(kerdesId)))
+            .where(and(
+                eq(testQuestions.testId, Number(id)),
+                eq(testQuestions.questionId, Number(questionId))
+            ))
             .limit(1);
         if (existing.length === 0) {
             return res.status(404).json({ success: false, message: 'A kérdés nem található ebben a tesztben.' });
         }
 
         await db.delete(testQuestions)
-            .where(eq(testQuestions.tesztId, Number(id)))
-            .where(eq(testQuestions.kerdesId, Number(kerdesId)));
+            .where(and(
+                eq(testQuestions.testId, Number(id)),
+                eq(testQuestions.questionId, Number(questionId))
+            ));
 
         return res.status(200).json({ success: true, message: 'Kérdés eltávolítva a tesztből!' });
     } catch (error) {

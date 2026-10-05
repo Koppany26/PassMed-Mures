@@ -8,7 +8,7 @@ import { categories, questions, options } from '../db_drizzle/questions.js';
 // --- KATEGÓRIÁK LISTÁZÁSA ---
 export const getCategories = async (req, res) => {
     try {
-        const result = await db.select().from(categories).orderBy(categories.nev);
+        const result = await db.select().from(categories).orderBy(categories.name);
         return res.status(200).json({ success: true, categories: result });
     } catch (error) {
         console.error('Kategória lista hiba:', error);
@@ -19,12 +19,12 @@ export const getCategories = async (req, res) => {
 // --- KATEGÓRIA LÉTREHOZÁSA (TANAR/ADMIN) ---
 export const createCategory = async (req, res) => {
     try {
-        const { nev } = req.body;
-        if (!nev || !nev.trim()) {
+        const { name } = req.body;
+        if (!name || !name.trim()) {
             return res.status(400).json({ success: false, message: 'A kategória neve kötelező.' });
         }
 
-        const newCategory = await db.insert(categories).values({ nev: nev.trim() }).returning();
+        const newCategory = await db.insert(categories).values({ name: name.trim() }).returning();
         return res.status(201).json({ success: true, message: 'Kategória létrehozva!', category: newCategory[0] });
     } catch (error) {
         console.error('Kategória létrehozási hiba:', error);
@@ -35,18 +35,18 @@ export const createCategory = async (req, res) => {
 // --- KÉRDÉSEK LISTÁZÁSA (opciókkal együtt) ---
 export const getQuestions = async (req, res) => {
     try {
-        const { kategoriaId } = req.query;
+        const { categoryId } = req.query;
 
         let query = db.select().from(questions);
-        if (kategoriaId) {
-            query = query.where(eq(questions.kategoriaId, Number(kategoriaId)));
+        if (categoryId) {
+            query = query.where(eq(questions.categoryId, Number(categoryId)));
         }
         const questionList = await query.orderBy(desc(questions.createdAt));
 
         // Opciók betöltése kérdésenként
         const result = [];
         for (const q of questionList) {
-            const opts = await db.select().from(options).where(eq(options.kerdesId, q.id)).orderBy(options.sorrend);
+            const opts = await db.select().from(options).where(eq(options.questionId, q.id)).orderBy(options.order);
             result.push({ ...q, options: opts });
         }
 
@@ -60,25 +60,29 @@ export const getQuestions = async (req, res) => {
 // --- KÉRDÉS LÉTREHOZÁSA (TANAR/ADMIN) ---
 export const createQuestion = async (req, res) => {
     try {
-        const { kategoriaId, kerdesSzovege, kepUrl, magyarazat, valaszTipus, options: optionList } = req.body;
+        const { categoryId, questionText, imageUrl, explanation, answerType, options: optionList } = req.body;
 
-        if (!kategoriaId || !kerdesSzovege || !optionList || optionList.length < 2) {
+        if (!categoryId || !questionText || !optionList || optionList.length < 2) {
             return res.status(400).json({ success: false, message: 'Kategória, kérdésszöveg és legalább 2 válaszlehetőség szükséges.' });
         }
 
         // Kategória létezik-e?
-        const cat = await db.select().from(categories).where(eq(categories.id, Number(kategoriaId))).limit(1);
+        const cat = await db.select().from(categories).where(eq(categories.id, Number(categoryId))).limit(1);
         if (cat.length === 0) {
             return res.status(400).json({ success: false, message: 'A megadott kategória nem létezik.' });
         }
 
+        // answerCount: ahány helyes opció van az optionList-ben (a séma megköveteli, hogy > 0 legyen)
+        const correctCount = optionList.filter(opt => opt.isCorrect).length;
+
         // Kérdés beszúrása
         const newQuestion = await db.insert(questions).values({
-            kategoriaId: Number(kategoriaId),
-            kerdesSzovege,
-            kepUrl: kepUrl || null,
-            magyarazat: magyarazat || null,
-            valaszTipus: valaszTipus || 'EGYSZERES',
+            categoryId: Number(categoryId),
+            questionText,
+            imageUrl: imageUrl || null,
+            explanation: explanation || null,
+            answerType: answerType || 'SINGLE',
+            answerCount: correctCount > 0 ? correctCount : 1,
         }).returning();
 
         // Opciók beszúrása
@@ -87,10 +91,10 @@ export const createQuestion = async (req, res) => {
         for (let i = 0; i < optionList.length; i++) {
             const opt = optionList[i];
             const newOpt = await db.insert(options).values({
-                kerdesId: questionId,
-                valaszSzovege: opt.valaszSzovege,
-                helyesE: opt.helyesE || false,
-                sorrend: i,
+                questionId: questionId,
+                optionText: opt.optionText,
+                isCorrect: opt.isCorrect || false,
+                order: i,
             }).returning();
             insertedOptions.push(newOpt[0]);
         }
@@ -110,7 +114,7 @@ export const createQuestion = async (req, res) => {
 export const updateQuestion = async (req, res) => {
     try {
         const { id } = req.params;
-        const { kategoriaId, kerdesSzovege, kepUrl, magyarazat, valaszTipus } = req.body;
+        const { categoryId, questionText, imageUrl, explanation, answerType } = req.body;
 
         const existing = await db.select().from(questions).where(eq(questions.id, Number(id))).limit(1);
         if (existing.length === 0) {
@@ -119,11 +123,11 @@ export const updateQuestion = async (req, res) => {
 
         const updated = await db.update(questions)
             .set({
-                kategoriaId: kategoriaId !== undefined ? Number(kategoriaId) : existing[0].kategoriaId,
-                kerdesSzovege: kerdesSzovege !== undefined ? kerdesSzovege : existing[0].kerdesSzovege,
-                kepUrl: kepUrl !== undefined ? kepUrl : existing[0].kepUrl,
-                magyarazat: magyarazat !== undefined ? magyarazat : existing[0].magyarazat,
-                valaszTipus: valaszTipus !== undefined ? valaszTipus : existing[0].valaszTipus,
+                categoryId: categoryId !== undefined ? Number(categoryId) : existing[0].categoryId,
+                questionText: questionText !== undefined ? questionText : existing[0].questionText,
+                imageUrl: imageUrl !== undefined ? imageUrl : existing[0].imageUrl,
+                explanation: explanation !== undefined ? explanation : existing[0].explanation,
+                answerType: answerType !== undefined ? answerType : existing[0].answerType,
             })
             .where(eq(questions.id, Number(id)))
             .returning();

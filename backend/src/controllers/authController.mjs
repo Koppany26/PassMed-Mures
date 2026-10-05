@@ -10,7 +10,7 @@ import { users } from '../db_drizzle/users.js';
 // --- REGISZTRÁCIÓ ---
 export const registerUser = async (req, res) => {
     try {
-        const { nev, email, jelszo } = req.body;
+        const { name, email, password } = req.body;
         const normalizedEmail = email.toLowerCase().trim();
 
         // 1. Foglaltság ellenőrzése
@@ -21,19 +21,19 @@ export const registerUser = async (req, res) => {
 
         // 2. Jelszó titkosítása
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(jelszo, salt);
+        const hashedPassword = await bcrypt.hash(password, salt);
 
         // 3. Mentés az adatbázisba
         const newUser = await db.insert(users).values({
-            nev,
+            name,
             email: normalizedEmail,
-            jelszoHash: hashedPassword,
+            passwordHash: hashedPassword,
         }).returning();
 
         return res.status(201).json({
             success: true,
             message: 'Sikeres regisztráció!',
-            user: { id: newUser[0].id, nev: newUser[0].nev }
+            user: { id: newUser[0].id, name: newUser[0].name }
         });
     } catch (error) {
         console.error('Regisztrációs hiba:', error);
@@ -44,7 +44,7 @@ export const registerUser = async (req, res) => {
 // --- BEJELENTKEZÉS ---
 export const loginUser = async (req, res) => {
     try {
-        const { email, jelszo } = req.body;
+        const { email, password } = req.body;
         const normalizedEmail = email.toLowerCase().trim();
 
         // 1. Felhasználó keresése
@@ -57,14 +57,14 @@ export const loginUser = async (req, res) => {
         }
 
         // 2. Jelszó ellenőrzése
-        const isMatch = await bcrypt.compare(jelszo, user.jelszoHash);
+        const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) {
             return res.status(401).json({ success: false, message: 'Helytelen email vagy jelszó.' });
         }
 
         // 3. Token generálása (1 napig érvényes)
         const token = jwt.sign(
-            { id: user.id, szerepkor: user.szerepkor },
+            { id: user.id, role: user.role },
             process.env.JWT_SECRET || 'nagyon_titkos_kulcs_ide',
             { expiresIn: '1d' }
         );
@@ -73,7 +73,7 @@ export const loginUser = async (req, res) => {
             success: true,
             message: 'Sikeres bejelentkezés!',
             token,
-            user: { id: user.id, nev: user.nev, szerepkor: user.szerepkor }
+            user: { id: user.id, name: user.name, role: user.role }
         });
     } catch (error) {
         console.error('Belépési hiba:', error);
@@ -87,10 +87,10 @@ export const getMe = async (req, res) => {
     try {
         const foundUsers = await db.select({
             id: users.id,
-            nev: users.nev,
+            name: users.name,
             email: users.email,
-            szerepkor: users.szerepkor,
-            csoportId: users.csoportId,
+            role: users.role,
+            groupId: users.groupId,
         }).from(users).where(eq(users.id, req.user.id)).limit(1);
 
         const user = foundUsers[0];

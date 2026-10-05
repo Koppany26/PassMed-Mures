@@ -6,11 +6,11 @@ import { db } from '../db_drizzle/index.js';
 import { tests, testQuestions, attempts, studentAnswers, studentAnswerOptions } from '../db_drizzle/tests.js';
 import { questions, options } from '../db_drizzle/questions.js';
 
-// --- TESZT KITÖLTÉSÉNEK INDÍTÁSA (DIAK) ---
+// --- TESZT KITÖLTÉSÉNEK INDÍTÁSA (STUDENT) ---
 export const startAttempt = async (req, res) => {
     try {
         const { id } = req.params; // teszt id
-        const diakId = req.user.id;
+        const studentId = req.user.id;
 
         // Teszt létezik-e?
         const foundTests = await db.select().from(tests).where(eq(tests.id, Number(id))).limit(1);
@@ -21,9 +21,9 @@ export const startAttempt = async (req, res) => {
         // Van-e már folyamatban lévő kitöltése a diáknak ehhez a teszthez?
         const existing = await db.select().from(attempts)
             .where(and(
-                eq(attempts.diakId, diakId),
-                eq(attempts.tesztId, Number(id)),
-                eq(attempts.statusz, 'FOLYAMATBAN')
+                eq(attempts.studentId, studentId),
+                eq(attempts.testId, Number(id)),
+                eq(attempts.status, 'IN_PROGRESS')
             ))
             .limit(1);
 
@@ -33,8 +33,8 @@ export const startAttempt = async (req, res) => {
 
         // Új kitöltés létrehozása
         const newAttempt = await db.insert(attempts).values({
-            diakId,
-            tesztId: Number(id),
+            studentId,
+            testId: Number(id),
         }).returning();
 
         return res.status(201).json({ success: true, message: 'Kitöltés elindítva!', attempt: newAttempt[0] });
@@ -44,12 +44,12 @@ export const startAttempt = async (req, res) => {
     }
 };
 
-// --- KITÖLTÉS BEADÁSA ÉS AUTOMATIKUS JAVÍTÁS (DIAK) ---
+// --- KITÖLTÉS BEADÁSA ÉS AUTOMATIKUS JAVÍTÁS (STUDENT) ---
 export const submitAttempt = async (req, res) => {
     try {
         const { id } = req.params; // attempt id
-        const { valaszok } = req.body; // [{ kerdesId, opcioIdk: [1,2] }]
-        const diakId = req.user.id;
+        const { answers: submittedAnswers } = req.body; // [{ questionId, optionIds: [1,2] }]
+        const studentId = req.user.id;
 
         // Kitöltés létezik-e és a diákhoz tartozik-e?
         const foundAttempts = await db.select().from(attempts).where(eq(attempts.id, Number(id))).limit(1);
@@ -58,70 +58,70 @@ export const submitAttempt = async (req, res) => {
         }
         const attempt = foundAttempts[0];
 
-        if (attempt.diakId !== diakId) {
+        if (attempt.studentId !== studentId) {
             return res.status(403).json({ success: false, message: 'Ez a kitöltés nem a te kitöltésed.' });
         }
 
-        if (attempt.statusz === 'BEFEJEZVE') {
+        if (attempt.status === 'COMPLETED') {
             return res.status(400).json({ success: false, message: 'Ez a kitöltés már be van fejezve.' });
         }
 
-        if (!valaszok || !Array.isArray(valaszok)) {
-            return res.status(400).json({ success: false, message: 'A valaszok mező kötelező és tömbnek kell lennie.' });
+        if (!submittedAnswers || !Array.isArray(submittedAnswers)) {
+            return res.status(400).json({ success: false, message: 'Az answers mező kötelező és tömbnek kell lennie.' });
         }
 
         // Teszt kérdéseinek betöltése pontszámokkal
         const tqList = await db.select().from(testQuestions)
-            .where(eq(testQuestions.tesztId, attempt.tesztId));
+            .where(eq(testQuestions.testId, attempt.testId));
 
         // Kérdés -> pontszám térkép
-        const pontszamMap = {};
+        const pointsMap = {};
         for (const tq of tqList) {
-            pontszamMap[tq.kerdesId] = tq.pontszam || 1;
+            pointsMap[tq.questionId] = tq.points || 1;
         }
 
-        let osszpontszam = 0;
-        let maxPontszam = 0;
+        let totalScore = 0;
+        let maxScore = 0;
 
         // Válaszok feldolgozása
-        for (const valasz of valaszok) {
-            const { kerdesId, opcioIdk } = valasz;
-            if (!kerdesId || !opcioIdk || !Array.isArray(opcioIdk)) continue;
+        for (const answer of submittedAnswers) {
+            const { questionId, optionIds } = answer;
+            if (!questionId || !optionIds || !Array.isArray(optionIds)) continue;
 
             // Kérdés betöltése
-            const qList = await db.select().from(questions).where(eq(questions.id, Number(kerdesId))).limit(1);
+            const qList = await db.select().from(questions).where(eq(questions.id, Number(questionId))).limit(1);
             if (qList.length === 0) continue;
-            const kerdes = qList[0];
+            const question = qList[0];
 
             // Helyes opciók betöltése
             const correctOpts = await db.select().from(options)
-                .where(and(eq(options.kerdesId, kerdes.id), eq(options.helyesE, true)));
+                .where(and(eq(options.questionId, question.id), eq(options.isCorrect, true)));
 
             const correctIds = correctOpts.map(o => o.id).sort();
-            const submittedIds = opcioIdk.map(Number).sort();
+            const submittedIds = optionIds.map(Number).sort();
 
-            const kerdesPontszam = pontszamMap[kerdes.id] || 1;
-            maxPontszam += kerdesPontszam;
+            const questionPoints = pointsMap[question.id] || 1;
+            maxScore += questionPoints;
 
             // Pontozás: minden helyes opciót eltalált, és nincs rossz opció
             const isCorrect = correctIds.length === submittedIds.length &&
                 correctIds.every((val, idx) => val === submittedIds[idx]);
 
             if (isCorrect) {
-                osszpontszam += kerdesPontszam;
+                totalScore += questionPoints;
             }
 
             // Válasz mentése
             const newAnswer = await db.insert(studentAnswers).values({
-                kitoltesId: attempt.id,
-                kerdesId: kerdes.id,
+                attemptId: attempt.id,
+                questionId: question.id,
             }).returning();
 
             // Kiválasztott opciók mentése
-            for (const opcioId of opcioIdk) {
+            for (const optionId of optionIds) {
                 await db.insert(studentAnswerOptions).values({
-                    diakValaszId: newAnswer[0].id,
-                    opcioId: Number(opcioId),
+                    studentAnswerId: newAnswer[0].id,
+                    optionId: Number(optionId),
                 });
             }
         }
@@ -129,9 +129,9 @@ export const submitAttempt = async (req, res) => {
         // Kitöltés befejezése
         const updated = await db.update(attempts)
             .set({
-                statusz: 'BEFEJEZVE',
-                befejezesIdeje: new Date(),
-                osszpontszam,
+                status: 'COMPLETED',
+                completedAt: new Date(),
+                totalScore,
             })
             .where(eq(attempts.id, attempt.id))
             .returning();
@@ -140,8 +140,8 @@ export const submitAttempt = async (req, res) => {
             success: true,
             message: 'Kitöltés beadva és kijavítva!',
             attempt: updated[0],
-            osszpontszam,
-            maxPontszam,
+            totalScore,
+            maxScore,
         });
     } catch (error) {
         console.error('Kitöltés beadási hiba:', error);
@@ -154,7 +154,7 @@ export const getAttemptById = async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.user.id;
-        const userRole = req.user.szerepkor;
+        const userRole = req.user.role;
 
         const foundAttempts = await db.select().from(attempts).where(eq(attempts.id, Number(id))).limit(1);
         if (foundAttempts.length === 0) {
@@ -163,40 +163,42 @@ export const getAttemptById = async (req, res) => {
         const attempt = foundAttempts[0];
 
         // Csak a saját kitöltését nézheti meg a diák, vagy tanár/admin bármelyiket
-        if (userRole === 'DIAK' && attempt.diakId !== userId) {
+        if (userRole === 'STUDENT' && attempt.studentId !== userId) {
             return res.status(403).json({ success: false, message: 'Ez a kitöltés nem a te kitöltésed.' });
         }
 
         // Teszt adatai
-        const foundTests = await db.select().from(tests).where(eq(tests.id, attempt.tesztId)).limit(1);
+        const foundTests = await db.select().from(tests).where(eq(tests.id, attempt.testId)).limit(1);
         const test = foundTests[0];
 
         // Válaszok betöltése
-        const answers = await db.select().from(studentAnswers).where(eq(studentAnswers.kitoltesId, attempt.id));
+        const answers = await db.select().from(studentAnswers).where(eq(studentAnswers.attemptId, attempt.id));
 
         // Részletes válaszok opciókkal
         const detailedAnswers = [];
         for (const ans of answers) {
-            const qList = await db.select().from(questions).where(eq(questions.id, ans.kerdesId)).limit(1);
+            const qList = await db.select().from(questions).where(eq(questions.id, ans.questionId)).limit(1);
             if (qList.length === 0) continue;
-            const kerdes = qList[0];
+            const question = qList[0];
 
             const selectedOpts = await db.select().from(studentAnswerOptions)
-                .where(eq(studentAnswerOptions.diakValaszId, ans.id));
+                .where(eq(studentAnswerOptions.studentAnswerId, ans.id));
 
-            const selectedOptionIds = selectedOpts.map(so => so.opcioId);
+            const selectedOptionIds = selectedOpts.map(so => so.optionId);
 
             // Helyes opciók (tanár/admin láthatja)
             const correctOpts = await db.select().from(options)
-                .where(and(eq(options.kerdesId, kerdes.id), eq(options.helyesE, true)));
+                .where(and(eq(options.questionId, question.id), eq(options.isCorrect, true)));
+
+            const correctOptionIds = correctOpts.map(o => o.id);
 
             detailedAnswers.push({
-                kerdesId: kerdes.id,
-                kerdesSzovege: kerdes.kerdesSzovege,
-                valasztottOpcioIdk: selectedOptionIds,
-                helyesOpcioIdk: correctOpts.map(o => o.id),
-                helyesE: selectedOptionIds.length === correctOpts.length &&
-                    selectedOptionIds.sort().every((val, idx) => val === correctOpts.map(o => o.id).sort()[idx]),
+                questionId: question.id,
+                questionText: question.questionText,
+                selectedOptionIds,
+                correctOptionIds,
+                isCorrect: selectedOptionIds.length === correctOptionIds.length &&
+                    [...selectedOptionIds].sort().every((val, idx) => val === [...correctOptionIds].sort()[idx]),
             });
         }
 
@@ -213,19 +215,19 @@ export const getAttemptById = async (req, res) => {
 // --- DIAK SAJÁT KITÖLTÉSEINEK LISTÁJA ---
 export const getMyAttempts = async (req, res) => {
     try {
-        const diakId = req.user.id;
+        const studentId = req.user.id;
 
         const result = await db.select().from(attempts)
-            .where(eq(attempts.diakId, diakId))
-            .orderBy(desc(attempts.kezdesIdeje));
+            .where(eq(attempts.studentId, studentId))
+            .orderBy(desc(attempts.startedAt));
 
         // Teszt címek hozzáadása
         const detailed = [];
         for (const att of result) {
-            const foundTests = await db.select().from(tests).where(eq(tests.id, att.tesztId)).limit(1);
+            const foundTests = await db.select().from(tests).where(eq(tests.id, att.testId)).limit(1);
             detailed.push({
                 ...att,
-                tesztCim: foundTests.length > 0 ? foundTests[0].cim : 'Ismeretlen teszt',
+                testTitle: foundTests.length > 0 ? foundTests[0].title : 'Ismeretlen teszt',
             });
         }
 
