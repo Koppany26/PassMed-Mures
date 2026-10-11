@@ -2,7 +2,8 @@
 import {
     getToken, clearToken, getMe,
     getTests, getTestById, startAttempt, submitAttempt, getMyAttempts,
-    getCategories, createCategory, createQuestion, createTest
+    getCategories, createCategory, createQuestion, createTest,
+    uploadTestFile, getImportPreview, uploadAnswerKey, approveImport
 } from './api.js';
 
 // --- ÁLLAPOT ---
@@ -50,11 +51,11 @@ async function loadUser() {
     try {
         const data = await getMe();
         currentUser = data.user;
-        userNameEl.textContent = currentUser.nev;
-        userRoleEl.textContent = currentUser.szerepkor;
+        userNameEl.textContent = currentUser.name;
+        userRoleEl.textContent = currentUser.role;
 
         // Tanár panel megjelenítése
-        if (currentUser.szerepkor === 'TANAR' || currentUser.szerepkor === 'ADMIN') {
+        if (currentUser.role === 'TEACHER' || currentUser.role === 'ADMIN') {
             teacherPanel.classList.remove('hidden');
             loadCategories();
         }
@@ -82,7 +83,7 @@ async function loadTests() {
 
             const info = document.createElement('div');
             info.className = 'test-info';
-            info.innerHTML = `<h4>${test.cim}</h4><p>${test.leiras || 'Nincs leírás'}</p>`;
+            info.innerHTML = `<h4>${test.title}</h4><p>${test.description || 'Nincs leírás'}</p>`;
 
             const btn = document.createElement('button');
             btn.className = 'btn btn-sm btn-primary';
@@ -112,8 +113,8 @@ async function openTest(testId) {
         hideAllViews();
         testView.classList.remove('hidden');
 
-        testTitle.textContent = currentTest.cim;
-        testDescription.textContent = currentTest.leiras || '';
+        testTitle.textContent = currentTest.title;
+        testDescription.textContent = currentTest.description || '';
 
         // Kérdések megjelenítése
         questionsContainer.innerHTML = '';
@@ -124,7 +125,7 @@ async function openTest(testId) {
             block.className = 'question-block';
 
             const qTitle = document.createElement('h4');
-            qTitle.textContent = `${qIndex + 1}. ${q.kerdesSzovege}`;
+            qTitle.textContent = `${qIndex + 1}. ${q.questionText}`;
             block.appendChild(qTitle);
 
             const list = document.createElement('ul');
@@ -135,12 +136,12 @@ async function openTest(testId) {
                 const label = document.createElement('label');
 
                 const input = document.createElement('input');
-                input.type = q.valaszTipus === 'TOBBSZOROS' ? 'checkbox' : 'radio';
+                input.type = q.answerType === 'MULTIPLE' ? 'checkbox' : 'radio';
                 input.name = `question_${q.id}`;
                 input.value = opt.id;
 
                 input.addEventListener('change', () => {
-                    if (q.valaszTipus === 'TOBBSZOROS') {
+                    if (q.answerType === 'MULTIPLE') {
                         if (!selectedAnswers[q.id]) selectedAnswers[q.id] = [];
                         if (input.checked) {
                             selectedAnswers[q.id].push(Number(opt.id));
@@ -153,7 +154,7 @@ async function openTest(testId) {
                 });
 
                 label.appendChild(input);
-                label.appendChild(document.createTextNode(opt.valaszSzovege));
+                label.appendChild(document.createTextNode(opt.optionText));
                 li.appendChild(label);
                 list.appendChild(li);
             });
@@ -171,18 +172,18 @@ async function submitTest() {
     if (!currentAttemptId) return;
 
     // Válaszok összegyűjtése
-    const valaszok = Object.entries(selectedAnswers).map(([kerdesId, opcioIdk]) => ({
-        kerdesId: Number(kerdesId),
-        opcioIdk,
+    const answers = Object.entries(selectedAnswers).map(([questionId, optionIds]) => ({
+        questionId: Number(questionId),
+        optionIds,
     }));
 
     try {
-        const data = await submitAttempt(currentAttemptId, valaszok);
+        const data = await submitAttempt(currentAttemptId, answers);
 
         // Eredmény megjelenítése
         hideAllViews();
         resultView.classList.remove('hidden');
-        resultScore.textContent = `${data.osszpontszam}/${data.maxPontszam}`;
+        resultScore.textContent = `${data.totalScore}/${data.maxScore}`;
 
         // Kitöltések frissítése
         loadAttempts();
@@ -208,11 +209,11 @@ async function loadAttempts() {
 
             const info = document.createElement('div');
             info.className = 'attempt-info';
-            info.innerHTML = `<h4>${att.tesztCim}</h4><p>${new Date(att.kezdesIdeje).toLocaleString('hu-HU')}</p>`;
+            info.innerHTML = `<h4>${att.testTitle}</h4><p>${new Date(att.startedAt).toLocaleString('hu-HU')}</p>`;
 
             const badge = document.createElement('span');
-            badge.className = `status-badge status-${att.statusz}`;
-            badge.textContent = att.statusz === 'BEFEJEZVE' ? `Befejezve (${att.osszpontszam} pont)` : att.statusz;
+            badge.className = `status-badge status-${att.status}`;
+            badge.textContent = att.status === 'BEFEJEZVE' ? `Befejezve (${att.totalScore} pont)` : att.status;
 
             li.appendChild(info);
             li.appendChild(badge);
@@ -232,7 +233,7 @@ async function loadCategories() {
         data.categories.forEach(cat => {
             const opt = document.createElement('option');
             opt.value = cat.id;
-            opt.textContent = cat.nev;
+            opt.textContent = cat.name;
             select.appendChild(opt);
         });
     } catch (error) {
@@ -242,17 +243,17 @@ async function loadCategories() {
 
 // --- TANÁR: ÚJ TESZT ---
 async function handleCreateTest() {
-    const cim = document.getElementById('newTestCim').value.trim();
-    const leiras = document.getElementById('newTestLeiras').value.trim();
-    const ido = document.getElementById('newTestIdo').value;
+    const title = document.getElementById('newTestCim').value.trim();
+    const description = document.getElementById('newTestLeiras').value.trim();
+    const timeLimit = document.getElementById('newTestIdo').value;
 
-    if (!cim) {
+    if (!title) {
         showAlert('A teszt címe kötelező.');
         return;
     }
 
     try {
-        await createTest({ cim, leiras, idoKorlatPercben: ido ? Number(ido) : null });
+        await createTest({ title, description, timeLimitMinutes: timeLimit ? Number(timeLimit) : null });
         showAlert('Teszt létrehozva!', 'success');
         document.getElementById('newTestCim').value = '';
         document.getElementById('newTestLeiras').value = '';
@@ -265,14 +266,14 @@ async function handleCreateTest() {
 
 // --- TANÁR: ÚJ KATEGÓRIA ---
 async function handleCreateCategory() {
-    const nev = document.getElementById('newCategoryNev').value.trim();
-    if (!nev) {
+    const name = document.getElementById('newCategoryNev').value.trim();
+    if (!name) {
         showAlert('A kategória neve kötelező.');
         return;
     }
 
     try {
-        await createCategory(nev);
+        await createCategory(name);
         showAlert('Kategória létrehozva!', 'success');
         document.getElementById('newCategoryNev').value = '';
         loadCategories();
@@ -301,15 +302,15 @@ function addOption() {
 
 // --- TANÁR: ÚJ KÉRDÉS ---
 async function handleCreateQuestion() {
-    const kategoriaId = document.getElementById('newQuestionKategoria').value;
-    const kerdesSzovege = document.getElementById('newQuestionSzoveg').value.trim();
-    const valaszTipus = document.getElementById('newQuestionTipus').value;
+    const categoryId = document.getElementById('newQuestionKategoria').value;
+    const questionText = document.getElementById('newQuestionSzoveg').value.trim();
+    const answerType = document.getElementById('newQuestionTipus').value;
 
-    if (!kategoriaId) {
+    if (!categoryId) {
         showAlert('Válassz kategóriát!');
         return;
     }
-    if (!kerdesSzovege) {
+    if (!questionText) {
         showAlert('A kérdés szövege kötelező.');
         return;
     }
@@ -321,7 +322,7 @@ async function handleCreateQuestion() {
         const text = editor.querySelector('.option-text').value.trim();
         const correct = editor.querySelector('.option-correct').checked;
         if (text) {
-            options.push({ valaszSzovege: text, helyesE: correct });
+            options.push({ optionText: text, isCorrect: correct });
         }
     });
 
@@ -331,7 +332,7 @@ async function handleCreateQuestion() {
     }
 
     try {
-        await createQuestion({ kategoriaId: Number(kategoriaId), kerdesSzovege, valaszTipus, options });
+        await createQuestion({ categoryId: Number(categoryId), questionText, answerType, options });
         showAlert('Kérdés létrehozva!', 'success');
         document.getElementById('newQuestionSzoveg').value = '';
         document.getElementById('optionsContainer').innerHTML = '';
@@ -357,6 +358,147 @@ document.getElementById('createTestBtn').addEventListener('click', handleCreateT
 document.getElementById('createCategoryBtn').addEventListener('click', handleCreateCategory);
 document.getElementById('addOptionBtn').addEventListener('click', addOption);
 document.getElementById('createQuestionBtn').addEventListener('click', handleCreateQuestion);
+
+// ======== TESZT IMPORT (feltöltés + beolvasás) ========
+let importToken = null;
+const importResult = document.getElementById('importResult');
+const importQuestionsEl = document.getElementById('importQuestions');
+
+function escapeHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function resetImportView() {
+    importToken = null;
+    importResult.classList.add('hidden');
+    importQuestionsEl.innerHTML = '';
+    document.getElementById('importFile').value = '';
+    document.getElementById('baremFile').value = '';
+}
+
+function renderImportPreview(preview) {
+    document.getElementById('importTitle').value = preview.title || '';
+    document.getElementById('importDesc').value = preview.description || '';
+    document.getElementById('importTime').value = preview.timeLimitMinutes ? preview.timeLimitMinutes : '';
+    importQuestionsEl.innerHTML = '';
+
+    preview.questions.forEach(q => {
+        const block = document.createElement('div');
+        block.className = 'question-block import-question';
+        block.dataset.num = q.num;
+
+        const head = document.createElement('div');
+        head.className = 'form-row';
+        head.innerHTML = `<label>Kérdés ${escapeHtml(q.num)}:</label>`;
+        block.appendChild(head);
+
+        const ta = document.createElement('textarea');
+        ta.className = 'import-q-text';
+        ta.value = q.text;
+        ta.rows = 2;
+        ta.style.width = '100%';
+        block.appendChild(ta);
+
+        q.options.forEach(opt => {
+            const row = document.createElement('div');
+            row.className = 'form-row';
+            const txtInput = document.createElement('input');
+            txtInput.type = 'text';
+            txtInput.className = 'import-opt-text';
+            txtInput.value = opt.text;
+            txtInput.style.width = '100%';
+            const label = document.createElement('label');
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'import-opt-correct';
+            cb.checked = !!opt.isCorrect;
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' Helyes'));
+            row.appendChild(txtInput);
+            row.appendChild(label);
+            block.appendChild(row);
+        });
+
+        importQuestionsEl.appendChild(block);
+    });
+}
+
+function collectImportData() {
+    const questions = [];
+    document.querySelectorAll('#importQuestions .import-question').forEach(block => {
+        const text = block.querySelector('.import-q-text').value.trim();
+        const opts = [];
+        block.querySelectorAll('.form-row').forEach(row => {
+            const t = row.querySelector('.import-opt-text');
+            const c = row.querySelector('.import-opt-correct');
+            if (t && t.value.trim()) {
+                opts.push({ text: t.value.trim(), isCorrect: c ? c.checked : false });
+            }
+        });
+        if (text && opts.length >= 2) {
+            questions.push({ text, options: opts });
+        }
+    });
+    return {
+        title: document.getElementById('importTitle').value.trim(),
+        description: document.getElementById('importDesc').value.trim(),
+        timeLimitMinutes: document.getElementById('importTime').value ? Number(document.getElementById('importTime').value) : null,
+        questions,
+    };
+}
+
+document.getElementById('importBtn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('importFile');
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) { showAlert('Válassz egy tesztfájlt (docx/pdf).'); return; }
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const data = await uploadTestFile(formData);
+        importToken = data.preview.token;
+        renderImportPreview(data.preview);
+        importResult.classList.remove('hidden');
+        showAlert(data.message, 'success');
+    } catch (error) {
+        showAlert(error.message);
+    }
+});
+
+document.getElementById('baremBtn').addEventListener('click', async () => {
+    if (!importToken) { showAlert('Előbb feltölt a tesztet.'); return; }
+    const fileInput = document.getElementById('baremFile');
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) { showAlert('Válassz egy javítókulcs fájlt.'); return; }
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const data = await uploadAnswerKey(importToken, formData);
+        renderImportPreview(data.preview);
+        showAlert(data.message, 'success');
+    } catch (error) {
+        showAlert(error.message);
+    }
+});
+
+document.getElementById('approveImportBtn').addEventListener('click', async () => {
+    if (!importToken) { showAlert('Előbb feltölt a tesztet.'); return; }
+    const data = collectImportData();
+    if (data.questions.length === 0) { showAlert('Nincs érvényes kérdés a mentésre.'); return; }
+    try {
+        const result = await approveImport(importToken, data);
+        showAlert(result.message, 'success');
+        resetImportView();
+        loadTests();
+    } catch (error) {
+        showAlert(error.message);
+    }
+});
+
+document.getElementById('cancelImportBtn').addEventListener('click', () => {
+    resetImportView();
+});
 
 // --- INDÍTÁS ---
 loadUser();

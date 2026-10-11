@@ -2,7 +2,7 @@
 Kategóriák és kérdések kezelése
 */
 import { eq, desc } from 'drizzle-orm';
-import { db } from '../db_drizzle/index.js';
+import { db } from '../db_drizzle/index.ts';
 import { categories, questions, options } from '../db_drizzle/questions.js';
 
 // --- KATEGÓRIÁK LISTÁZÁSA ---

@@ -74,6 +74,34 @@
                 <button class="btn btn-sm btn-primary" id="createTestBtn">Teszt létrehozása</button>
             </div>
 
+            <!-- Teszt feltöltése (automatikus beolvasás) -->
+            <div class="teacher-panel">
+                <h3>Teszt feltöltése (docx / pdf)</h3>
+                <div class="form-row">
+                    <input type="file" id="importFile" accept=".docx,.pdf" class="import-file">
+                </div>
+                <button class="btn btn-sm btn-primary" id="importBtn">Beolvasás</button>
+
+                <div id="importResult" class="hidden" style="margin-top:14px; border-top:1px solid #ddd; padding:10px;">
+                    <div class="form-row"><label for="importTitle">Teszt címe:</label><input type="text" id="importTitle"></div>
+                    <div class="form-row"><label for="importDesc">Leírás:</label><input type="text" id="importDesc"></div>
+                    <div class="form-row"><label for="importTime">Időkorlát (perc):</label><input type="number" id="importTime"></div>
+
+                    <div id="importQuestions" style="margin-top:10px;"></div>
+
+                    <div style="margin-top:14px; padding-top:6px;">
+                        <strong>Javítókulcs (barem):</strong><br>
+                        <input type="file" id="baremFile" accept=".docx,.pdf,.txt" class="import-file">
+                        <button class="btn btn-sm btn-secondary" id="baremBtn">Javítókulcs beolvasása</button>
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <button class="btn btn-primary" id="approveImportBtn">Jóváhagyás és mentés</button>
+                        <button class="btn btn-sm btn-secondary" id="cancelImportBtn">Eltörlés</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Új kategória -->
             <div class="teacher-panel">
                 <h3>Új kategória</h3>
@@ -96,8 +124,8 @@
                 </div>
                 <div class="form-row">
                     <select id="newQuestionTipus">
-                        <option value="EGYSZERES">Egyszeres választás</option>
-                        <option value="TOBBSZOROS">Többszörös választás</option>
+                        <option value="SINGLE">Egyszeres választás</option>
+                        <option value="MULTIPLE">Többszörös választás</option>
                     </select>
                 </div>
                 <div id="optionsContainer"></div>

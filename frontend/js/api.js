@@ -41,30 +41,30 @@ export async function apiFetch(path, options = {}) {
 }
 
 // --- AUTH ---
-export const register = (nev, email, jelszo) =>
+export const register = (name, email, password) =>
     apiFetch('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ nev, email, jelszo }),
+        body: JSON.stringify({ name, email, password }),
     });
 
-export const login = (email, jelszo) =>
+export const login = (email, password) =>
     apiFetch('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, jelszo }),
+        body: JSON.stringify({ email, password }),
     });
 
 export const getMe = () => apiFetch('/auth/me');
 
 // --- KATEGÓRIÁK ÉS KÉRDÉSEK ---
 export const getCategories = () => apiFetch('/categories');
-export const createCategory = (nev) =>
+export const createCategory = (name) =>
     apiFetch('/categories', {
         method: 'POST',
-        body: JSON.stringify({ nev }),
+        body: JSON.stringify({ name }),
     });
 
-export const getQuestions = (kategoriaId) =>
-    apiFetch(kategoriaId ? `/questions?kategoriaId=${kategoriaId}` : '/questions');
+export const getQuestions = (categoryId) =>
+    apiFetch(categoryId ? `/questions?categoryId=${categoryId}` : '/questions');
 
 export const createQuestion = (data) =>
     apiFetch('/questions', {
@@ -81,23 +81,60 @@ export const createTest = (data) =>
         body: JSON.stringify(data),
     });
 
-export const addQuestionToTest = (tesztId, kerdesId, pontszam = 1) =>
-    apiFetch(`/tests/${tesztId}/questions`, {
+export const addQuestionToTest = (testId, questionId, points = 1) =>
+    apiFetch(`/tests/${testId}/questions`, {
         method: 'POST',
-        body: JSON.stringify({ kerdesId, pontszam }),
+        body: JSON.stringify({ questionId, points }),
     });
 
 // --- KITÖLTÉSEK ---
-export const startAttempt = (tesztId) =>
-    apiFetch(`/tests/${tesztId}/attempts`, {
+export const startAttempt = (testId) =>
+    apiFetch(`/tests/${testId}/attempts`, {
         method: 'POST',
     });
 
-export const submitAttempt = (attemptId, valaszok) =>
+export const submitAttempt = (attemptId, answers) =>
     apiFetch(`/attempts/${attemptId}/submit`, {
         method: 'POST',
-        body: JSON.stringify({ valaszok }),
+        body: JSON.stringify({ answers }),
     });
 
 export const getMyAttempts = () => apiFetch('/attempts/my');
 export const getAttemptById = (id) => apiFetch(`/attempts/${id}`);
+
+// --- TESZT IMPORT (fájlfeltöltés + beolvasás) ---
+// Fájlfeltöltés FormData-val (ne POST typeot 'Content-Type' fejlécket!)
+export async function apiUpload(path, formData) {
+    const token = getToken();
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        headers,
+        body: formData,
+    });
+
+    let data = {};
+    const text = await response.text();
+    if (text) {
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            data = { message: text };
+        }
+    }
+    if (!response.ok) {
+        throw new Error(data.message || `Hiba a feltöltés során (${response.status}).`);
+    }
+    return data;
+}
+
+export const uploadTestFile = (formData) => apiUpload('/tests/import', formData);
+export const getImportPreview = (token) => apiFetch(`/tests/import/${token}`);
+export const uploadAnswerKey = (token, formData) => apiUpload(`/tests/import/${token}/answer-key`, formData);
+export const approveImport = (token, data) =>
+    apiFetch(`/tests/import/${token}/approve`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });

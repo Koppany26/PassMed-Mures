@@ -46,6 +46,12 @@ if (frontendPath) {
     console.warn('FIGYELEM: A frontend mappa nem található!');
 }
 
+// Feltöltött fájlok (tesztek / javítókulcsok) statikus kiszolgálása
+const uploadsPath = path.join(__dirname, '../uploads');
+if (fs.existsSync(uploadsPath)) {
+    app.use('/uploads', express.static(uploadsPath));
+}
+
 // --- ALAP VÉGPONT (Teszteléshez) ---
 app.get('/api/status', (req, res) => {
     res.status(200).json({ 

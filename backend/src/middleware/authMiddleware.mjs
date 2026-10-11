@@ -15,7 +15,7 @@ export const authenticate = (req, res, next) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'nagyon_titkos_kulcs_ide');
         
-        req.user = { id: decoded.id, szerepkor: decoded.szerepkor };
+        req.user = { id: decoded.id, role: decoded.role };
         next();
     } catch (error) {
         return res.status(401).json({ success: false, message: 'Érvénytelen vagy lejárt token.' });
@@ -24,12 +24,12 @@ export const authenticate = (req, res, next) => {
 
 // --- SZEREPKÖR ELLENŐRZÉS ---
 // Csak a megadott szerepkörökkel engedi tovább a kérést
-export const authorize = (...szerepkorok) => {
+export const authorize = (...allowed) => {
     return (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({ success: false, message: 'Nincs bejelentkezve.' });
         }
-        if (!szerepkorok.includes(req.user.szerepkor)) {
+        if (!allowed.includes(req.user.role)) {
             return res.status(403).json({ success: false, message: 'Nincs jogosultságod ehhez a művelethez.' });
         }
         next();

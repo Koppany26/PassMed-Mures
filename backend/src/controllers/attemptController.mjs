@@ -2,7 +2,7 @@
 Teszt kitöltések és eredmények kezelése
 */
 import { eq, and, desc } from 'drizzle-orm';
-import { db } from '../db_drizzle/index.js';
+import { db } from '../db_drizzle/index.ts';
 import { tests, testQuestions, attempts, studentAnswers, studentAnswerOptions } from '../db_drizzle/tests.js';
 import { questions, options } from '../db_drizzle/questions.js';
 

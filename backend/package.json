@@ -4,14 +4,19 @@
   "description": "PassMed - Medical testing and quiz platform",
   "main": "src/app.mjs",
   "scripts": {
-    "dev": "nodemon src/app.mjs",
-    "start": "node src/app.mjs",
+    "dev": "nodemon --watch src --ext mjs,ts,js,json --exec tsx src/app.mjs",
+    "start": "tsx src/app.mjs",
     "seed": "tsx src/seed.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["medical", "quiz", "testing", "education"],
+  "keywords": [
+    "medical",
+    "quiz",
+    "testing",
+    "education"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
@@ -22,6 +27,9 @@
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.13.0",
+    "multer": "^2.4.0",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.23.0"
   },
   "devDependencies": {

@@ -15,7 +15,6 @@ import { sql } from 'drizzle-orm';
 
 // ==========================
 // 2. QUESTION BANK
-//    (English field names)
 // ==========================
 
 export const categories = pgTable('categories', {

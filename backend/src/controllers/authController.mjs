@@ -4,7 +4,7 @@ regisztráció és a bejelentkezés
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
-import { db } from '../db_drizzle/index.js';
+import { db } from '../db_drizzle/index.ts';
 import { users } from '../db_drizzle/users.js';
 
 // --- REGISZTRÁCIÓ ---

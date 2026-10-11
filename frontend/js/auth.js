@@ -40,10 +40,10 @@ showLoginBtn.addEventListener('click', () => {
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('loginEmail').value;
-    const jelszo = document.getElementById('loginJelszo').value;
+    const password = document.getElementById('loginJelszo').value;
 
     try {
-        const data = await login(email, jelszo);
+        const data = await login(email, password);
         setToken(data.token);
         showAlert('Sikeres bejelentkezés!', 'success');
         setTimeout(() => {
@@ -57,12 +57,12 @@ loginForm.addEventListener('submit', async (e) => {
 // Regisztráció
 registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const nev = document.getElementById('regNev').value;
+    const name = document.getElementById('regNev').value;
     const email = document.getElementById('regEmail').value;
-    const jelszo = document.getElementById('regJelszo').value;
+    const password = document.getElementById('regJelszo').value;
 
     try {
-        await register(nev, email, jelszo);
+        await register(name, email, password);
         showAlert('Sikeres regisztráció! Most jelentkezz be.', 'success');
         // Visszaváltás a bejelentkezésre
         registerForm.classList.add('hidden');

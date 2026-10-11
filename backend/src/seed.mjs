@@ -18,17 +18,17 @@ async function seed() {
     // --- 1. DEMO FELHASZNÁLÓK ---
     log('Demo felhasználók létrehozása...');
     const salt = await bcrypt.genSalt(10);
-    const jelszoHash = await bcrypt.hash('jelszo123', salt);
+    const passwordHash = await bcrypt.hash('jelszo123', salt);
 
     // Tanár
     const existingTanar = await db.select().from(users).where(eq(users.email, 'tanar@passmed.hu')).limit(1);
     let tanarId;
     if (existingTanar.length === 0) {
         const tanar = await db.insert(users).values({
-            nev: 'Dr. Kovács Anna',
+            name: 'Dr. Kovács Anna',
             email: 'tanar@passmed.hu',
-            jelszoHash,
-            szerepkor: 'TANAR',
+            passwordHash,
+            role: 'TEACHER',
         }).returning();
         tanarId = tanar[0].id;
         log(`Tanár létrehozva (id: ${tanarId})`);
@@ -42,10 +42,10 @@ async function seed() {
     let diakId;
     if (existingDiak.length === 0) {
         const diak = await db.insert(users).values({
-            nev: 'Nagy Péter',
+            name: 'Nagy Péter',
             email: 'diak@passmed.hu',
-            jelszoHash,
-            szerepkor: 'DIAK',
+            passwordHash,
+            role: 'STUDENT',
         }).returning();
         diakId = diak[0].id;
         log(`Diák létrehozva (id: ${diakId})`);
@@ -59,9 +59,9 @@ async function seed() {
     const kategoriaNevek = ['Anatómia', 'Fiziológia', 'Patológia', 'Farmakológia'];
     const kategoriaIds = {};
     for (const nev of kategoriaNevek) {
-        const existing = await db.select().from(categories).where(eq(categories.nev, nev)).limit(1);
+        const existing = await db.select().from(categories).where(eq(categories.name, nev)).limit(1);
         if (existing.length === 0) {
-            const cat = await db.insert(categories).values({ nev }).returning();
+            const cat = await db.insert(categories).values({ name: nev }).returning();
             kategoriaIds[nev] = cat[0].id;
             log(`Kategória létrehozva: ${nev} (id: ${cat[0].id})`);
         } else {
@@ -137,18 +137,21 @@ async function seed() {
 
     const kerdesIds = [];
     for (const kd of kerdesAdatok) {
-        const kategoriaId = kategoriaIds[kd.kategoria];
+        const categoryId = kategoriaIds[kd.kategoria];
         const existing = await db.select().from(questions)
-            .where(eq(questions.kerdesSzovege, kd.szoveg))
+            .where(eq(questions.questionText, kd.szoveg))
             .limit(1);
 
         let kerdesId;
         if (existing.length === 0) {
+            // answerCount: hány helyes válasz van (a séma megköveteli, hogy > 0 legyen)
+            const answerCount = kd.opciok.filter(opt => opt.helyes).length;
             const q = await db.insert(questions).values({
-                kategoriaId,
-                kerdesSzovege: kd.szoveg,
-                valaszTipus: kd.valaszTipus,
-                magyarazat: kd.magyarazat,
+                categoryId,
+                questionText: kd.szoveg,
+                answerType: kd.valaszTipus === 'TOBBSZOROS' ? 'MULTIPLE' : 'SINGLE',
+                explanation: kd.magyarazat,
+                answerCount,
             }).returning();
             kerdesId = q[0].id;
 
@@ -156,10 +159,10 @@ async function seed() {
             for (let i = 0; i < kd.opciok.length; i++) {
                 const opt = kd.opciok[i];
                 await db.insert(options).values({
-                    kerdesId,
-                    valaszSzovege: opt.szoveg,
-                    helyesE: opt.helyes,
-                    sorrend: i,
+                    questionId: kerdesId,
+                    optionText: opt.szoveg,
+                    isCorrect: opt.helyes,
+                    order: i,
                 });
             }
             log(`Kérdés létrehozva: "${kd.szoveg}" (id: ${kerdesId})`);
@@ -172,13 +175,14 @@ async function seed() {
 
     // --- 4. TESZT ---
     log('Teszt létrehozása...');
-    const existingTest = await db.select().from(tests).where(eq(tests.cim, 'Orvosi Alapismeretek Teszt')).limit(1);
+    const existingTest = await db.select().from(tests).where(eq(tests.title, 'Orvosi Alapismeretek Teszt')).limit(1);
     let tesztId;
     if (existingTest.length === 0) {
         const t = await db.insert(tests).values({
-            cim: 'Orvosi Alapismeretek Teszt',
-            leiras: 'Ez egy minta teszt az orvosi alapismeretekhez. 5 kérdésből áll.',
-            idoKorlatPercben: 15,
+            title: 'Orvosi Alapismeretek Teszt',
+            description: 'Ez egy minta teszt az orvosi alapismeretekhez. 5 kérdésből áll.',
+            timeLimitMinutes: 15,
+            teacherId: tanarId,
         }).returning();
         tesztId = t[0].id;
         log(`Teszt létrehozva: "Orvosi Alapismeretek Teszt" (id: ${tesztId})`);
@@ -190,16 +194,16 @@ async function seed() {
     // Kérdések hozzáadása a teszthez
     for (let i = 0; i < kerdesIds.length; i++) {
         const existingTQ = await db.select().from(testQuestions)
-            .where(eq(testQuestions.tesztId, tesztId))
-            .where(eq(testQuestions.kerdesId, kerdesIds[i]))
+            .where(eq(testQuestions.testId, tesztId))
+            .where(eq(testQuestions.questionId, kerdesIds[i]))
             .limit(1);
 
         if (existingTQ.length === 0) {
             await db.insert(testQuestions).values({
-                tesztId,
-                kerdesId: kerdesIds[i],
-                sorrend: i,
-                pontszam: 1,
+                testId: tesztId,
+                questionId: kerdesIds[i],
+                order: i,
+                points: 1,
             });
             log(`Kérdés (id: ${kerdesIds[i]}) hozzáadva a teszthez`);
         }
