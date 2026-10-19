@@ -119,28 +119,40 @@ export function parseQuestions(lines) {
     return questions;
 }
 
-// --- JAVÍTÓKULCS SZÖVEG FELDOLGOZÁSA (szám -> betű) ---
-//    Pl.: "1A 2C 3B" / "1. A\n2. C\n3. B" / táblázat
+// --- JAVÍTÓKULCS SZÖVEG FELDOLGOZÁSA (szám -> betűk) ---
+//    Pl.: "1A 2C 3B" / "1. AB\n2. C\n3. BD" / "1. A, B" / táblázat
+//    TÖBB helyes válasz is lehet, pl. "BC" = B és C is helyes!
 export function parseBaremMap(text) {
     const map = {};
-    const re = /(\d{1,3})\s*[.)]?\s*[:\-–]?\s*([A-E])/gi;
+    const re = /(\d{1,3})\s*[.)]?\s*[:\-–]?\s*([A-Ea-e](?:[A-Ea-e]|[\s,;/.\-–]+[A-E])*)/g;
     let m;
     while ((m = re.exec(text)) !== null) {
         const num = parseInt(m[1], 10);
-        map[num] = m[2].toUpperCase();
+        // Betűk kigyűjtése, nagybetűsítve (pl. "A, B" -> "AB")
+        const letters = m[2].toUpperCase().replace(/[^A-E]/g, '');
+        if (letters) map[num] = letters;
     }
     return map;
 }
 
 // --- HELYES VÁLASZOK BEÁLLÍTÁSA A JAVÍTÓKULCS ALAPJÁN ---
-function applyBarem(questions, map) {
+//    A map értéke több betűt is tartalmazhat (pl. "AB"),
+//    ilyenkor MINDEN megadott betűhöz tartozó opció helyes lesz.
+export function applyBarem(questions, map) {
     const letterIndex = { A: 0, B: 1, C: 2, D: 3, E: 4 };
     for (const q of questions) {
-        const letter = map[q.num];
-        if (!letter) continue;
-        const idx = letterIndex[letter];
-        if (idx == null) continue;
-        q.options = q.options.map((o, oi) => ({ ...o, isCorrect: oi === idx }));
+        const letters = map[q.num];
+        if (!letters) continue;
+
+        const correctIdx = new Set();
+        for (const ch of letters) {
+            const idx = letterIndex[ch];
+            // Csak a ténylegesen létező opciókra jelölünk (pl. E betű 4 opció esetén)
+            if (idx != null && idx < q.options.length) correctIdx.add(idx);
+        }
+        if (correctIdx.size === 0) continue;
+
+        q.options = q.options.map((o, oi) => ({ ...o, isCorrect: correctIdx.has(oi) }));
     }
 }
 
