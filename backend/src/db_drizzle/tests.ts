@@ -5,6 +5,7 @@ import {
   integer, 
   timestamp, 
   boolean, 
+  real,
   pgEnum, 
   primaryKey, 
   unique,
@@ -13,10 +14,25 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users, groups } from './users';
-import { questions, options } from './questions';
+import { questions, options, topics, answerTypeEnum } from './questions';
 
 export const attemptStatusEnum = pgEnum('attempt_status', ['IN_PROGRESS', 'COMPLETED', 'ABANDONED']);
 export const testTypeEnum = pgEnum('test_type', ['PRACTICE', 'EXAM']);
+export const attemptModeEnum = pgEnum('attempt_mode', ['ONLINE', 'PAPER']);
+export const paperSheetStatusEnum = pgEnum('paper_sheet_status', [
+  'GENERATED',
+  'SCANNED',
+  'REVIEW_REQUIRED',
+  'REVIEWED',
+  'GRADED',
+]);
+export const testScanStatusEnum = pgEnum('test_scan_status', [
+  'UPLOADED',
+  'PROCESSING',
+  'REVIEW_REQUIRED',
+  'IMPORTED',
+  'FAILED',
+]);
 
 // ==========================
 // 3. TESTS
@@ -28,16 +44,20 @@ export const tests = pgTable('tests', {
   description: text('description'),
   timeLimitMinutes: integer('time_limit_minutes'),
   testType: testTypeEnum('test_type').default('PRACTICE').notNull(),
-  // NEW: explicit flag instead of hardcoding "EXAM = no tab switching" —
-  // lets a teacher lock navigation on a PRACTICE test too, or the reverse.
+  allowBreak: boolean('allow_break').default(false).notNull(),
   allowTabSwitch: boolean('allow_tab_switch').default(true).notNull(),
   teacherId: integer('teacher_id'),
+  studentOwnerId: integer('student_owner_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   teacherFk: foreignKey({
     columns: [table.teacherId],
     foreignColumns: [users.id],
   }).onDelete('set null'),
+  studentOwnerFk: foreignKey({
+    columns: [table.studentOwnerId],
+    foreignColumns: [users.id],
+  }).onDelete('cascade'),
 }));
 
 export const testQuestions = pgTable('test_questions', {
@@ -87,6 +107,8 @@ export const courseMaterials = pgTable('course_materials', {
   id: serial('id').primaryKey(),
   testId: integer('test_id'),
   questionId: integer('question_id'),
+  topicId: integer('topic_id'),
+  teacherId: integer('teacher_id'),
   fileType: materialTypeEnum('file_type').notNull(),
   fileUrl: text('file_url').notNull(),
   title: text('title').notNull(),
@@ -100,10 +122,17 @@ export const courseMaterials = pgTable('course_materials', {
     columns: [table.questionId],
     foreignColumns: [questions.id],
   }).onDelete('cascade'),
-  // NEW: exactly one of testId / questionId must be set, never both, never neither
+  topicFk: foreignKey({
+    columns: [table.topicId],
+    foreignColumns: [topics.id],
+  }).onDelete('cascade'),
+  teacherFk: foreignKey({
+    columns: [table.teacherId],
+    foreignColumns: [users.id],
+  }).onDelete('set null'),
   exactlyOneTargetCheck: check(
     'course_materials_exactly_one_target',
-    sql`(${table.testId} IS NOT NULL AND ${table.questionId} IS NULL) OR (${table.testId} IS NULL AND ${table.questionId} IS NOT NULL)`
+    sql`(${table.testId} IS NOT NULL AND ${table.questionId} IS NULL AND ${table.topicId} IS NULL) OR (${table.testId} IS NULL AND ${table.questionId} IS NOT NULL AND ${table.topicId} IS NULL) OR (${table.testId} IS NULL AND ${table.questionId} IS NULL AND ${table.topicId} IS NOT NULL)`
   ),
 }));
 
@@ -120,6 +149,7 @@ export const attempts = pgTable('attempts', {
   submittedAt: timestamp('submitted_at'),
   totalScore: integer('total_score'),
   status: attemptStatusEnum('status').default('IN_PROGRESS').notNull(),
+  mode: attemptModeEnum('mode').default('ONLINE').notNull(),
   isPrivate: boolean('is_private').default(false).notNull(),
 }, (table) => ({
   studentFk: foreignKey({
@@ -132,10 +162,144 @@ export const attempts = pgTable('attempts', {
   }),
 }));
 
+export const paperAnswerSheets = pgTable('paper_answer_sheets', {
+  id: serial('id').primaryKey(),
+  attemptId: integer('attempt_id').notNull().unique(),
+  sheetCode: text('sheet_code').notNull().unique(),
+  templateVersion: integer('template_version').default(1).notNull(),
+  scanFileUrl: text('scan_file_url'),
+  status: paperSheetStatusEnum('status').default('GENERATED').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  scannedAt: timestamp('scanned_at'),
+  reviewedAt: timestamp('reviewed_at'),
+}, (table) => ({
+  attemptFk: foreignKey({
+    columns: [table.attemptId],
+    foreignColumns: [attempts.id],
+  }).onDelete('cascade'),
+}));
+
+export const paperAnswers = pgTable('paper_answers', {
+  id: serial('id').primaryKey(),
+  sheetId: integer('sheet_id').notNull(),
+  questionId: integer('question_id').notNull(),
+  confidence: real('confidence'),
+  needsReview: boolean('needs_review').default(true).notNull(),
+  reviewedAt: timestamp('reviewed_at'),
+}, (table) => ({
+  sheetFk: foreignKey({
+    columns: [table.sheetId],
+    foreignColumns: [paperAnswerSheets.id],
+  }).onDelete('cascade'),
+  questionFk: foreignKey({
+    columns: [table.questionId],
+    foreignColumns: [questions.id],
+  }).onDelete('cascade'),
+  uniqueQuestionPerSheet: unique('paper_answers_sheet_question_unq').on(table.sheetId, table.questionId),
+  confidenceRange: check(
+    'paper_answers_confidence_range',
+    sql`${table.confidence} IS NULL OR (${table.confidence} >= 0 AND ${table.confidence} <= 1)`
+  ),
+}));
+
+export const paperAnswerOptions = pgTable('paper_answer_options', {
+  paperAnswerId: integer('paper_answer_id').notNull(),
+  optionId: integer('option_id').notNull(),
+}, (table) => ({
+  paperAnswerFk: foreignKey({
+    columns: [table.paperAnswerId],
+    foreignColumns: [paperAnswers.id],
+  }).onDelete('cascade'),
+  optionFk: foreignKey({
+    columns: [table.optionId],
+    foreignColumns: [options.id],
+  }).onDelete('cascade'),
+  pk: primaryKey({
+    name: 'paper_answer_options_pk',
+    columns: [table.paperAnswerId, table.optionId],
+  }),
+}));
+
+export const testScanImports = pgTable('test_scan_imports', {
+  id: serial('id').primaryKey(),
+  teacherId: integer('teacher_id'),
+  testId: integer('test_id'),
+  sourceFileUrl: text('source_file_url').notNull(),
+  rawText: text('raw_text'),
+  errorMessage: text('error_message'),
+  status: testScanStatusEnum('status').default('UPLOADED').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  processedAt: timestamp('processed_at'),
+  importedAt: timestamp('imported_at'),
+}, (table) => ({
+  teacherFk: foreignKey({
+    columns: [table.teacherId],
+    foreignColumns: [users.id],
+  }).onDelete('set null'),
+  testFk: foreignKey({
+    columns: [table.testId],
+    foreignColumns: [tests.id],
+  }).onDelete('set null'),
+}));
+
+export const testScanQuestions = pgTable('test_scan_questions', {
+  id: serial('id').primaryKey(),
+  scanId: integer('scan_id').notNull(),
+  questionNumber: integer('question_number'),
+  questionText: text('question_text').notNull(),
+  answerType: answerTypeEnum('answer_type').default('SINGLE').notNull(),
+  order: integer('order').default(0).notNull(),
+}, (table) => ({
+  scanFk: foreignKey({
+    columns: [table.scanId],
+    foreignColumns: [testScanImports.id],
+  }).onDelete('cascade'),
+  uniqueOrderPerScan: unique('test_scan_questions_order_unq').on(table.scanId, table.order),
+}));
+
+export const testScanOptions = pgTable('test_scan_options', {
+  id: serial('id').primaryKey(),
+  scanQuestionId: integer('scan_question_id').notNull(),
+  optionText: text('option_text').notNull(),
+  isCorrect: boolean('is_correct').default(false).notNull(),
+  order: integer('order').default(0).notNull(),
+}, (table) => ({
+  questionFk: foreignKey({
+    columns: [table.scanQuestionId],
+    foreignColumns: [testScanQuestions.id],
+  }).onDelete('cascade'),
+  uniqueOrderPerQuestion: unique('test_scan_options_order_unq').on(table.scanQuestionId, table.order),
+}));
+
+export const testReports = pgTable('test_reports', {
+  id: serial('id').primaryKey(),
+  testId: integer('test_id').notNull(),
+  questionId: integer('question_id'),
+  reporterId: integer('reporter_id'),
+  message: text('message').notNull(),
+  status: text('status').default('OPEN').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  resolvedAt: timestamp('resolved_at'),
+}, (table) => ({
+  testFk: foreignKey({
+    columns: [table.testId],
+    foreignColumns: [tests.id],
+  }).onDelete('cascade'),
+  questionFk: foreignKey({
+    columns: [table.questionId],
+    foreignColumns: [questions.id],
+  }).onDelete('set null'),
+  reporterFk: foreignKey({
+    columns: [table.reporterId],
+    foreignColumns: [users.id],
+  }).onDelete('set null'),
+}));
+
 export const studentAnswers = pgTable('student_answers', {
   id: serial('id').primaryKey(),
   attemptId: integer('attempt_id').notNull(),
   questionId: integer('question_id').notNull(),
+  isCorrect: boolean('is_correct').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   attemptFk: foreignKey({

@@ -57,14 +57,41 @@ export const getMe = () => apiFetch('/auth/me');
 
 // --- KATEGÓRIÁK ÉS KÉRDÉSEK ---
 export const getCategories = () => apiFetch('/categories');
+export const getTopics = (categoryId) =>
+    apiFetch(categoryId ? `/topics?categoryId=${categoryId}` : '/topics');
+export const getBodyRegions = () => apiFetch('/body/regions');
+export const updateTopicBodyRegion = (topicId, bodyRegionId) =>
+    apiFetch(`/topics/${topicId}/body-region`, {
+        method: 'PUT',
+        body: JSON.stringify({ bodyRegionId }),
+    });
+export const getTopicMaterials = (topicId) => apiFetch(`/materials/topics/${topicId}`);
+export const uploadTopicMaterial = (topicId, formData) =>
+    apiUpload(`/materials/topics/${topicId}`, formData);
+export const getUploadUrl = (fileUrl) => {
+    const url = new URL(fileUrl, new URL(API_BASE).origin);
+    if (url.origin !== new URL(API_BASE).origin || !url.pathname.startsWith('/uploads/')) {
+        throw new Error('Érvénytelen tananyag-hivatkozás.');
+    }
+    return url.toString();
+};
 export const createCategory = (name) =>
     apiFetch('/categories', {
         method: 'POST',
         body: JSON.stringify({ name }),
     });
 
-export const getQuestions = (categoryId) =>
-    apiFetch(categoryId ? `/questions?categoryId=${categoryId}` : '/questions');
+export const getQuestions = (categoryId, topicId) => {
+    const params = new URLSearchParams();
+    if (categoryId) params.set('categoryId', categoryId);
+    if (topicId) params.set('topicId', topicId);
+    return apiFetch(`/questions${params.size ? `?${params}` : ''}`);
+};
+export const answerTopicPractice = (questionId, topicId, optionIds) =>
+    apiFetch(`/questions/${questionId}/practice-answer`, {
+        method: 'POST',
+        body: JSON.stringify({ topicId, optionIds }),
+    });
 
 export const createQuestion = (data) =>
     apiFetch('/questions', {
@@ -74,10 +101,25 @@ export const createQuestion = (data) =>
 
 // --- TESZTEK ---
 export const getTests = () => apiFetch('/tests');
+export const createStudentPracticeTest = (topicIds) =>
+    apiFetch('/tests/practice', {
+        method: 'POST',
+        body: JSON.stringify({ topicIds }),
+    });
 export const getTestById = (id) => apiFetch(`/tests/${id}`);
 export const createTest = (data) =>
     apiFetch('/tests', {
         method: 'POST',
+        body: JSON.stringify(data),
+    });
+export const updateTest = (id, data) =>
+    apiFetch(`/tests/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+export const updateTestQuestion = (testId, questionId, data) =>
+    apiFetch(`/tests/${testId}/questions/${questionId}`, {
+        method: 'PUT',
         body: JSON.stringify(data),
     });
 
@@ -86,6 +128,35 @@ export const addQuestionToTest = (testId, questionId, points = 1) =>
         method: 'POST',
         body: JSON.stringify({ questionId, points }),
     });
+export const removeQuestionFromTest = (testId, questionId) =>
+    apiFetch(`/tests/${testId}/questions/${questionId}`, { method: 'DELETE' });
+export const reportTestIssue = (testId, data) =>
+    apiFetch(`/tests/${testId}/reports`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+export const getOpenTestReports = () => apiFetch('/tests/reports/inbox');
+export const resolveTestReport = (reportId) =>
+    apiFetch(`/tests/reports/${reportId}/resolve`, { method: 'PATCH' });
+
+// --- CSOPORTOK ---
+export const getMyGroups = () => apiFetch('/groups');
+export const createGroup = (name) =>
+    apiFetch('/groups', { method: 'POST', body: JSON.stringify({ name }) });
+export const inviteToGroup = (groupId, email) =>
+    apiFetch(`/groups/${groupId}/invitations`, {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+    });
+export const assignTestToGroup = (groupId, testId) =>
+    apiFetch(`/groups/${groupId}/tests`, {
+        method: 'POST',
+        body: JSON.stringify({ testId }),
+    });
+export const getGroupAttempts = (groupId) => apiFetch(`/groups/${groupId}/attempts`);
+export const getMyGroupInvitations = () => apiFetch('/groups/invitations');
+export const acceptGroupInvitation = (invitationId) =>
+    apiFetch(`/groups/invitations/${invitationId}/accept`, { method: 'POST' });
 
 // --- KITÖLTÉSEK ---
 export const startAttempt = (testId) =>
@@ -97,6 +168,11 @@ export const submitAttempt = (attemptId, answers) =>
     apiFetch(`/attempts/${attemptId}/submit`, {
         method: 'POST',
         body: JSON.stringify({ answers }),
+    });
+export const logProctorEvent = (attemptId, eventType) =>
+    apiFetch(`/attempts/${attemptId}/events`, {
+        method: 'POST',
+        body: JSON.stringify({ eventType }),
     });
 
 export const getMyAttempts = () => apiFetch('/attempts/my');

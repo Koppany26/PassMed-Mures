@@ -5,6 +5,8 @@ import questionRoutes from './questionRoutes.mjs';
 import importRoutes from './importRoutes.mjs';
 import testsRoutes from './testsRoutes.mjs';
 import attemptRoutes from './attemptRoutes.mjs';
+import groupRoutes from './groupRoutes.mjs';
+import materialRoutes from './materialRoutes.mjs';
 
 const router = express.Router();
 
@@ -25,5 +27,7 @@ router.use('/tests', testsRoutes);
 
 // Kitöltések
 router.use('/attempts', attemptRoutes);
+router.use('/groups', groupRoutes);
+router.use('/materials', materialRoutes);
 
 export default router;

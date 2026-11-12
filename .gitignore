@@ -5,3 +5,10 @@ node_modules
 
 
 /src/generated/prisma
+
+# User-uploaded files are stored locally and must not be committed.
+backend/uploads/
+
+# Temporary files
+*.tmp
+~$*

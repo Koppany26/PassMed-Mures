@@ -33,6 +33,23 @@
             <div class="card">
                 <h2 id="testTitle">Teszt</h2>
                 <p id="testDescription" style="color:#888; margin-bottom:20px;"></p>
+                <div id="testReportForm" class="teacher-panel hidden">
+                    <h3>Hibás teszt jelzése</h3>
+                    <div class="form-row">
+                        <label for="reportQuestionSelect">Érintett rész:</label>
+                        <select id="reportQuestionSelect">
+                            <option value="">A teljes teszt</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <textarea id="reportMessage" maxlength="2000" placeholder="Írd le, mi hibás (legalább 5 karakter)."></textarea>
+                    </div>
+                    <button class="btn btn-sm btn-secondary" id="sendTestReportBtn" type="button">Hibajelzés küldése</button>
+                </div>
+                <div id="attemptControls" class="form-row hidden">
+                    <span id="attemptTimer" aria-live="polite"></span>
+                    <button class="btn btn-sm btn-secondary" id="pauseTestBtn" type="button">Szünet</button>
+                </div>
                 <div id="questionsContainer"></div>
                 <button class="btn btn-primary" id="submitTestBtn">Beadás</button>
             </div>
@@ -44,7 +61,58 @@
                 <div class="score-label">Eredményed</div>
                 <div class="score" id="resultScore">0/0</div>
             </div>
+            <div id="attemptFeedback"></div>
             <button class="btn btn-secondary" id="backToTestsBtn">Vissza a tesztekhez</button>
+        </div>
+
+        <div id="topicPracticePanel" class="card hidden">
+            <h2>Tanulás témakör szerint</h2>
+            <div class="form-row">
+                <label for="practiceCategorySelect">Vizsgatárgy:</label>
+                <select id="practiceCategorySelect"></select>
+                <label for="practiceTopicSelect">Témakör:</label>
+                <select id="practiceTopicSelect"></select>
+                <button class="btn btn-sm btn-primary" id="loadTopicPracticeBtn" type="button">Kérdések betöltése</button>
+            </div>
+            <div id="topicPracticeQuestions"></div>
+            <div class="teacher-panel">
+                <h3>Saját gyakorló teszt</h3>
+                <p class="editor-hint">Válassz egy vagy több témakört; a testtérkép a kiválasztott témakörökhöz rendelt részeket mutatja.</p>
+                <div class="form-row">
+                    <label for="practiceTestTopics">Témakörök:</label>
+                    <select id="practiceTestTopics" multiple size="6"></select>
+                </div>
+                <div id="practiceTestBodyMapContainer" class="body-progress hidden">
+                    <svg id="practiceTestBodyMap" class="human-body-map" viewBox="0 0 260 420" role="img" aria-labelledby="practiceBodyMapTitle practiceBodyMapDescription">
+                        <title id="practiceBodyMapTitle">Kiválasztott testrészek</title>
+                        <desc id="practiceBodyMapDescription">A kiemelt testrészek a kiválasztott témakörökhöz tartoznak.</desc>
+                        <path id="practice-skin" class="body-region" d="M120 12 C96 12 86 31 88 53 C89 70 98 81 104 86 L104 105 C88 106 75 112 67 124 L47 176 C43 187 49 197 59 199 C68 201 73 195 77 186 L94 144 L88 208 L94 265 L98 306 L84 376 C82 389 91 397 101 396 C109 395 113 389 115 379 L128 315 L141 379 C143 389 149 395 157 396 C167 397 176 389 174 376 L160 306 L164 265 L170 208 L164 144 L181 186 C185 195 192 201 201 199 C211 197 217 187 213 176 L193 124 C185 112 172 106 156 105 L156 86 C162 81 171 70 172 53 C174 31 164 12 140 12 Z" />
+                        <ellipse id="practice-head" class="body-region" cx="130" cy="48" rx="33" ry="38" />
+                        <path id="practice-chest" class="body-region" d="M103 106 L157 106 C171 109 180 116 184 128 L165 206 L95 206 L76 128 C80 116 89 109 103 106 Z" />
+                        <path id="practice-abdomen" class="body-region" d="M95 207 L165 207 L162 265 L166 288 L94 288 L98 265 Z" />
+                        <path id="practice-pelvis" class="body-region" d="M94 289 L166 289 L160 316 L100 316 Z" />
+                        <g id="practice-arms" class="body-region">
+                            <path d="M76 128 L57 178 L70 184 L94 144 L89 206 L76 210 L47 187 L67 124 Z" />
+                            <path d="M184 128 L203 178 L190 184 L166 144 L171 206 L184 210 L213 187 L193 124 Z" />
+                        </g>
+                        <g id="practice-legs" class="body-region">
+                            <path d="M100 314 L128 314 L116 379 C114 390 108 397 99 397 C89 397 83 389 86 377 Z" />
+                            <path d="M132 314 L160 314 L174 377 C177 389 171 397 161 397 C152 397 146 390 144 379 Z" />
+                        </g>
+                    </svg>
+                    <ul id="practiceTestSelectedRegions" class="body-progress-list"></ul>
+                </div>
+                <button class="btn btn-sm btn-primary" id="createPracticeTestBtn" type="button">Gyakorló teszt indítása</button>
+            </div>
+            <h3>Témaköri tananyagok</h3>
+            <div id="topicMaterialsList">
+                <p class="editor-hint">Válassz témakört a tananyagok megtekintéséhez.</p>
+            </div>
+        </div>
+
+        <div id="studentGroupsPanel" class="card hidden">
+            <h2>Csoportmeghívók</h2>
+            <div id="studentInvitationsList"></div>
         </div>
 
         <!-- Saját kitöltéseim -->
@@ -59,6 +127,25 @@
         <div id="teacherPanel" class="card hidden">
             <h2>Tanári panel</h2>
 
+            <div class="teacher-panel">
+                <div class="editor-questions-header">
+                    <h3>Beérkezett hibajelzések <span id="testReportCount"></span></h3>
+                    <button class="btn btn-sm btn-secondary" id="refreshTestReportsBtn" type="button">Frissítés</button>
+                </div>
+                <div id="testReportsList">
+                    <p class="editor-hint">Betöltés...</p>
+                </div>
+            </div>
+
+            <div class="teacher-panel">
+                <h3>Diákcsoportok</h3>
+                <div class="form-row">
+                    <input type="text" id="newGroupName" placeholder="Új csoport neve">
+                    <button class="btn btn-sm btn-primary" id="createGroupBtn" type="button">Csoport létrehozása</button>
+                </div>
+                <div id="teacherGroupsList"></div>
+            </div>
+
             <!-- Új teszt létrehozása -->
             <div class="teacher-panel">
                 <h3>Új teszt létrehozása</h3>
@@ -71,7 +158,62 @@
                 <div class="form-row">
                     <input type="number" id="newTestIdo" placeholder="Időkorlát (perc)">
                 </div>
+                <div class="form-row">
+                    <label for="newTestType">Típus:</label>
+                    <select id="newTestType">
+                        <option value="PRACTICE">Próba</option>
+                        <option value="EXAM">Vizsga</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label><input type="checkbox" id="newTestAllowBreak"> Szünet engedélyezése</label>
+                </div>
                 <button class="btn btn-sm btn-primary" id="createTestBtn">Teszt létrehozása</button>
+            </div>
+
+            <div class="teacher-panel test-editor-panel">
+                <h3>Tesztjeim szerkesztése</h3>
+                <p class="editor-hint">Válaszd ki a saját tesztedet az adatok és a kérdések módosításához.</p>
+                <div class="form-row">
+                    <select id="editTestSelect" aria-label="Szerkesztendő teszt">
+                        <option value="">Teszt kiválasztása...</option>
+                    </select>
+                </div>
+                <div id="testEditor" class="hidden">
+                    <div class="editor-test-details">
+                        <div class="form-row"><input type="text" id="editTestTitle" placeholder="Teszt címe"></div>
+                        <div class="form-row"><textarea id="editTestDescription" placeholder="Teszt leírása"></textarea></div>
+                        <div class="form-row"><input type="number" id="editTestTime" min="1" placeholder="Időkorlát (perc, opcionális)"></div>
+                        <div class="form-row">
+                            <label for="editTestType">Típus:</label>
+                            <select id="editTestType">
+                                <option value="PRACTICE">Próba</option>
+                                <option value="EXAM">Vizsga</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label><input type="checkbox" id="editTestAllowBreak"> Szünet engedélyezése</label>
+                        </div>
+                        <button class="btn btn-sm btn-primary" id="saveTestDetailsBtn">Tesztadatok mentése</button>
+                    </div>
+                    <div class="editor-questions-header">
+                        <h4>Kérdések</h4>
+                        <span id="editQuestionCount" class="question-count"></span>
+                    </div>
+                    <div id="editTestQuestions"></div>
+                    <div class="question-bank">
+                        <h4>Kérdés hozzáadása a kérdésbankból</h4>
+                        <div class="form-row">
+                            <select id="bankCategorySelect" aria-label="Téma szűrése">
+                                <option value="">Téma kiválasztása...</option>
+                            </select>
+                            <select id="bankQuestionSelect" aria-label="Hozzáadandó kérdés" disabled>
+                                <option value="">Előbb válassz témát...</option>
+                            </select>
+                            <button class="btn btn-sm btn-secondary" id="addBankQuestionBtn" disabled>Hozzáadás</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Teszt feltöltése (automatikus beolvasás) -->
@@ -86,6 +228,20 @@
                     <div class="form-row"><label for="importTitle">Teszt címe:</label><input type="text" id="importTitle"></div>
                     <div class="form-row"><label for="importDesc">Leírás:</label><input type="text" id="importDesc"></div>
                     <div class="form-row"><label for="importTime">Időkorlát (perc):</label><input type="number" id="importTime"></div>
+                    <div class="form-row">
+                        <label for="importCategory">Vizsgatárgy:</label>
+                        <select id="importCategory"></select>
+                    </div>
+                    <div class="form-row">
+                        <label for="importTestType">Típus:</label>
+                        <select id="importTestType">
+                            <option value="PRACTICE">Próba</option>
+                            <option value="EXAM">Vizsga</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label><input type="checkbox" id="importAllowBreak"> Szünet engedélyezése</label>
+                    </div>
 
                     <div id="importQuestions" style="margin-top:10px;"></div>
 
@@ -111,13 +267,42 @@
                 <button class="btn btn-sm btn-primary" id="createCategoryBtn">Kategória létrehozása</button>
             </div>
 
+            <div class="teacher-panel">
+                <h3>Témakörök testtérképre rendezése</h3>
+                <p class="editor-hint">A hozzárendelés minden diáknál közös; a testrészek eredménye a kitöltött tesztekből számolódik.</p>
+                <div id="bodyMappingsList"></div>
+            </div>
+
+            <div class="teacher-panel">
+                <h3>Tananyag feltöltése témakörhöz</h3>
+                <div class="form-row">
+                    <label for="materialTopicSelect">Témakör:</label>
+                    <select id="materialTopicSelect"></select>
+                </div>
+                <div class="form-row">
+                    <label for="materialTitle">Tananyag címe (opcionális):</label>
+                    <input type="text" id="materialTitle" maxlength="200">
+                </div>
+                <div class="form-row">
+                    <label for="materialFile">Fájl (PPT, PPTX vagy PDF):</label>
+                    <input type="file" id="materialFile" accept=".ppt,.pptx,.pdf">
+                </div>
+                <button class="btn btn-sm btn-primary" id="uploadMaterialBtn" type="button">Feltöltés</button>
+            </div>
+
             <!-- Új kérdés -->
             <div class="teacher-panel">
                 <h3>Új kérdés</h3>
                 <div class="form-row">
+                    <label for="newQuestionKategoria">Vizsgatárgy:</label>
                     <select id="newQuestionKategoria">
-                        <option value="">Kategória kiválasztása...</option>
+                        <option value="">Vizsgatárgy kiválasztása...</option>
                     </select>
+                </div>
+                <div class="form-row">
+                    <label for="newQuestionTopics">Témakörök (több is választható):</label>
+                    <select id="newQuestionTopics" multiple size="6" aria-describedby="topicSelectionHint"></select>
+                    <small id="topicSelectionHint">Több témakör kijelöléséhez tartsd lenyomva a Ctrl (Macen a Command) billentyűt.</small>
                 </div>
                 <div class="form-row">
                     <textarea id="newQuestionSzoveg" placeholder="Kérdés szövege"></textarea>

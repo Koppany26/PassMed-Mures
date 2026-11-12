@@ -15,9 +15,9 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
-import { eq } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db_drizzle/index.js';
-import { categories, questions, options } from '../db_drizzle/questions.js';
+import { categories, questions, options, topics, questionTopics } from '../db_drizzle/questions.js';
 import { tests, testQuestions } from '../db_drizzle/tests.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -267,11 +267,43 @@ export const getImportPreview = async (req, res) => {
 // ==========================
 // 3. JÓVÁHAGYÁS ÉS MENTÉS AZ ADATBÁZISBA
 // ==========================
-async function ensureCategory(tx, name) {
-    const existing = await tx.select().from(categories).where(eq(categories.name, name)).limit(1);
-    if (existing.length > 0) return existing[0].id;
-    const ins = await tx.insert(categories).values({ name }).returning();
-    return ins[0].id;
+function normalizeQuestionText(value) {
+    return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function getQuestionSignature(question) {
+    const optionsSignature = question.options
+        .map(option => [normalizeQuestionText(option.text), option.isCorrect])
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    return JSON.stringify([normalizeQuestionText(question.text), optionsSignature]);
+}
+
+async function findExistingQuestion(tx, question, categoryId) {
+    const normalizedText = normalizeQuestionText(question.text);
+    const candidates = await tx.select({
+        id: questions.id,
+        questionText: questions.questionText,
+    }).from(questions).where(sql`
+        ${questions.categoryId} = ${categoryId}
+        AND lower(regexp_replace(btrim(${questions.questionText}), '\\s+', ' ', 'g')) = ${normalizedText}
+    `);
+    if (candidates.length === 0) return null;
+
+    const candidateOptions = await tx.select().from(options)
+        .where(inArray(options.questionId, candidates.map(candidate => candidate.id)))
+        .orderBy(asc(options.order));
+    const optionsByQuestion = new Map();
+    for (const option of candidateOptions) {
+        const questionOptions = optionsByQuestion.get(option.questionId) || [];
+        questionOptions.push({ text: option.optionText, isCorrect: option.isCorrect });
+        optionsByQuestion.set(option.questionId, questionOptions);
+    }
+
+    const signature = getQuestionSignature(question);
+    return candidates.find(candidate => getQuestionSignature({
+        text: candidate.questionText,
+        options: optionsByQuestion.get(candidate.id) || [],
+    }) === signature) || null;
 }
 
 export const approveImport = async (req, res) => {
@@ -286,51 +318,108 @@ export const approveImport = async (req, res) => {
         const title = (body.title && body.title.trim()) || rec.title || 'Importált teszt';
         const description = body.description ? body.description.trim() : (rec.description || null);
         const timeLimitMinutes = body.timeLimitMinutes ? Number(body.timeLimitMinutes) : null;
+        const categoryId = Number(body.categoryId);
+        const testType = body.testType === undefined ? 'PRACTICE' : body.testType;
+        const allowBreak = body.allowBreak === undefined ? false : body.allowBreak;
+
+        if (timeLimitMinutes !== null && (!Number.isInteger(timeLimitMinutes) || timeLimitMinutes < 1)) {
+            return res.status(400).json({ success: false, message: 'Az időkorlát legalább 1 perc legyen.' });
+        }
+        if (!Number.isInteger(categoryId) || categoryId < 1) {
+            return res.status(400).json({ success: false, message: 'Válassz vizsgatárgyat.' });
+        }
+        const category = await db.select({ id: categories.id }).from(categories)
+            .where(eq(categories.id, categoryId)).limit(1);
+        if (category.length === 0) {
+            return res.status(400).json({ success: false, message: 'A kiválasztott vizsgatárgy nem létezik.' });
+        }
+        if (!['PRACTICE', 'EXAM'].includes(testType)) {
+            return res.status(400).json({ success: false, message: 'Érvénytelen teszttípus.' });
+        }
+        if (typeof allowBreak !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'Érvénytelen szünetbeállítás.' });
+        }
 
         const rawQuestions = Array.isArray(body.questions) ? body.questions : rec.questions;
         const valid = rawQuestions
-            .filter(q => q && (q.text || '').trim() && Array.isArray(q.options) && q.options.filter(o => (o.text || '').trim()).length >= 2)
+            .filter(q => q && typeof q.text === 'string' && q.text.trim()
+                && Array.isArray(q.options) && q.options.filter(o => o && typeof o.text === 'string' && o.text.trim()).length >= 2)
             .map(q => ({
                 text: q.text.trim(),
-                options: q.options.filter(o => (o.text || '').trim()).map(o => ({ text: o.text.trim(), isCorrect: !!o.isCorrect })),
+                options: q.options.filter(o => o && typeof o.text === 'string' && o.text.trim())
+                    .map(o => ({ text: o.text.trim(), isCorrect: o.isCorrect === true })),
+                topicIds: Array.isArray(q.topicIds) ? [...new Set(q.topicIds.map(Number))] : [],
             }));
 
         if (valid.length === 0) {
             return res.status(400).json({ success: false, message: 'Nincs legalább 1 érvényes kérdés (min. 2 opcióval) a mentéshez.' });
         }
+        for (const question of valid) {
+            if (question.topicIds.some(topicId => !Number.isInteger(topicId) || topicId < 1)) {
+                return res.status(400).json({ success: false, message: 'Érvénytelen témakör az egyik kérdésnél.' });
+            }
+            if (question.topicIds.length > 0) {
+                const foundTopics = await db.select({ id: topics.id }).from(topics).where(and(
+                    inArray(topics.id, question.topicIds),
+                    eq(topics.categoryId, categoryId),
+                ));
+                if (foundTopics.length !== question.topicIds.length) {
+                    return res.status(400).json({ success: false, message: 'Minden témakörnek a kiválasztott vizsgatárgyhoz kell tartoznia.' });
+                }
+            }
+        }
+        const uniqueQuestions = [...new Map(valid.map(question => [getQuestionSignature(question), question])).values()];
+        let reusedQuestionCount = 0;
 
         const testId = await db.transaction(async (tx) => {
-            const categoryId = await ensureCategory(tx, 'Importált tesztek');
-
             const t = await tx.insert(tests).values({
                 title,
                 description,
                 timeLimitMinutes,
+                testType,
+                allowTabSwitch: testType !== 'EXAM',
+                allowBreak,
                 teacherId: rec.teacherId,
             }).returning();
             const tid = t[0].id;
 
             let order = 0;
-            for (const q of valid) {
-                const correctCount = q.options.filter(o => o.isCorrect).length;
-                const qRow = await tx.insert(questions).values({
-                    categoryId,
-                    questionText: q.text,
-                    imageUrl: null,
-                    explanation: null,
-                    answerType: correctCount > 1 ? 'MULTIPLE' : 'SINGLE',
-                    difficulty: 1,
-                    answerCount: correctCount > 0 ? correctCount : 1,
-                }).returning();
-                const qid = qRow[0].id;
-
-                for (let i = 0; i < q.options.length; i++) {
-                    await tx.insert(options).values({
+            for (const q of uniqueQuestions) {
+                let existingQuestion = await findExistingQuestion(tx, q, categoryId);
+                let qid;
+                if (existingQuestion) {
+                    qid = existingQuestion.id;
+                    reusedQuestionCount++;
+                } else {
+                    const correctCount = q.options.filter(o => o.isCorrect).length;
+                    const qRow = await tx.insert(questions).values({
+                        categoryId,
+                        questionText: q.text,
+                        imageUrl: null,
+                        explanation: null,
+                        answerType: correctCount > 1 ? 'MULTIPLE' : 'SINGLE',
+                        difficulty: 1,
+                        answerCount: correctCount > 0 ? correctCount : 1,
+                    }).returning();
+                    qid = qRow[0].id;
+                    await tx.insert(options).values(q.options.map((option, index) => ({
                         questionId: qid,
-                        optionText: q.options[i].text,
-                        isCorrect: q.options[i].isCorrect,
-                        order: i,
-                    });
+                        optionText: option.text,
+                        isCorrect: option.isCorrect,
+                        order: index,
+                    })));
+                }
+                if (q.topicIds.length > 0) {
+                    const linkedTopics = await tx.select({ topicId: questionTopics.topicId })
+                        .from(questionTopics).where(eq(questionTopics.questionId, qid));
+                    const linkedTopicIds = new Set(linkedTopics.map(link => link.topicId));
+                    const topicsToLink = q.topicIds.filter(topicId => !linkedTopicIds.has(topicId));
+                    if (topicsToLink.length > 0) {
+                        await tx.insert(questionTopics).values(topicsToLink.map(topicId => ({
+                            questionId: qid,
+                            topicId,
+                        })));
+                    }
                 }
 
                 await tx.insert(testQuestions).values({
@@ -347,7 +436,13 @@ export const approveImport = async (req, res) => {
 
         imports.delete(token);
 
-        return res.status(201).json({ success: true, message: 'Teszt sikeresen elmentve!', testId });
+        return res.status(201).json({
+            success: true,
+            message: `Teszt sikeresen elmentve! ${reusedQuestionCount} meglévő kérdést újrahasználtunk.`,
+            testId,
+            reusedQuestionCount,
+            duplicateQuestionCount: valid.length - uniqueQuestions.length,
+        });
     } catch (error) {
         console.error('Mentési hiba:', error);
         return res.status(500).json({ success: false, message: 'A teszt mentése közben hiba történt.' });

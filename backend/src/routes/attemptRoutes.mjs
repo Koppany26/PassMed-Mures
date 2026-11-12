@@ -5,6 +5,7 @@ Teszt kitöltések útvonalai
 import express from 'express';
 import {
     submitAttempt,
+    logProctorEvent,
     getAttemptById,
     getMyAttempts,
 } from '../controllers/attemptController.mjs';
@@ -17,6 +18,7 @@ router.get('/my', authenticate, getMyAttempts);
 
 // Kitöltés beadása
 router.post('/:id/submit', authenticate, submitAttempt);
+router.post('/:id/events', authenticate, logProctorEvent);
 
 // Kitöltés részletei
 router.get('/:id', authenticate, getAttemptById);

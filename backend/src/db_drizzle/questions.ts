@@ -57,6 +57,16 @@ export const options = pgTable('options', {
   }).onDelete('cascade'),
 }));
 
+export const bodyRegions = pgTable('body_regions', {
+  id: serial('id').primaryKey(),
+  regionKey: text('region_key').notNull().unique(),
+  name: text('name').notNull(),
+  svgRegionId: text('svg_region_id').notNull().unique(),
+}, (table) => ({
+  regionKeyCheck: check('body_regions_region_key_not_empty', sql`${table.regionKey} <> ''`),
+  svgRegionIdCheck: check('body_regions_svg_region_id_not_empty', sql`${table.svgRegionId} <> ''`),
+}));
+
 // ==========================
 // TOPICS (separate concept from categories) + question<->topic (many-to-many)
 // ==========================
@@ -65,10 +75,15 @@ export const topics = pgTable('topics', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
   categoryId: integer('category_id'),
+  bodyRegionId: integer('body_region_id'),
 }, (table) => ({
   categoryFk: foreignKey({
     columns: [table.categoryId],
     foreignColumns: [categories.id],
+  }).onDelete('set null'),
+  bodyRegionFk: foreignKey({
+    columns: [table.bodyRegionId],
+    foreignColumns: [bodyRegions.id],
   }).onDelete('set null'),
 }));
 

@@ -1,0 +1,2 @@
+ALTER TABLE "tests" ADD COLUMN "student_owner_id" integer;--> statement-breakpoint
+ALTER TABLE "tests" ADD CONSTRAINT "tests_student_owner_id_users_id_fk" FOREIGN KEY ("student_owner_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;

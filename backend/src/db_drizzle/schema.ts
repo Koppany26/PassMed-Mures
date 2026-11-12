@@ -1,13 +1,20 @@
 import { relations } from 'drizzle-orm';
 
 import { users, groups, invitations, groupMembers, teacherInvitations } from './users';
-import { questions, categories, options, topics, questionTopics } from './questions';
+import { questions, categories, options, topics, questionTopics, bodyRegions } from './questions';
 import {
   tests,
   testQuestions,
   testAssignments,
   courseMaterials,
   attempts,
+  paperAnswerSheets,
+  paperAnswers,
+  paperAnswerOptions,
+  testScanImports,
+  testScanQuestions,
+  testScanOptions,
+  testReports,
   studentAnswers,
   studentAnswerOptions,
   proctorEvents,
@@ -24,10 +31,19 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     references: [groups.id],
     relationName: 'GroupMembers',
   }),
+  studentOwner: one(users, {
+    fields: [tests.studentOwnerId],
+    references: [users.id],
+    relationName: 'StudentPracticeTests',
+  }),
   ownedGroups: many(groups, { relationName: 'TeacherGroups' }),
   groupMemberships: many(groupMembers),
   ownedTests: many(tests),
+  studentPracticeTests: many(tests, { relationName: 'StudentPracticeTests' }),
+  uploadedMaterials: many(courseMaterials, { relationName: 'MaterialUploader' }),
   attempts: many(attempts),
+  testScans: many(testScanImports),
+  testReports: many(testReports),
   flashcards: many(flashcards),
 }));
 
@@ -78,7 +94,16 @@ export const topicsRelations = relations(topics, ({ one, many }) => ({
     fields: [topics.categoryId],
     references: [categories.id],
   }),
+  bodyRegion: one(bodyRegions, {
+    fields: [topics.bodyRegionId],
+    references: [bodyRegions.id],
+  }),
   questionTopics: many(questionTopics),
+  courseMaterials: many(courseMaterials),
+}));
+
+export const bodyRegionsRelations = relations(bodyRegions, ({ many }) => ({
+  topics: many(topics),
 }));
 
 export const questionsRelations = relations(questions, ({ one, many }) => ({
@@ -89,6 +114,8 @@ export const questionsRelations = relations(questions, ({ one, many }) => ({
   options: many(options),
   testQuestions: many(testQuestions),
   studentAnswers: many(studentAnswers),
+  testReports: many(testReports),
+  paperAnswers: many(paperAnswers),
   questionTopics: many(questionTopics),
   flashcards: many(flashcards),
   courseMaterials: many(courseMaterials),
@@ -111,6 +138,7 @@ export const optionsRelations = relations(options, ({ one, many }) => ({
     references: [questions.id],
   }),
   studentAnswerOptions: many(studentAnswerOptions),
+  paperAnswerOptions: many(paperAnswerOptions),
 }));
 
 export const testsRelations = relations(tests, ({ one, many }) => ({
@@ -121,7 +149,9 @@ export const testsRelations = relations(tests, ({ one, many }) => ({
   testQuestions: many(testQuestions),
   testAssignments: many(testAssignments),
   attempts: many(attempts),
+  testReports: many(testReports),
   courseMaterials: many(courseMaterials),
+  scanImports: many(testScanImports),
 }));
 
 export const testQuestionsRelations = relations(testQuestions, ({ one }) => ({
@@ -155,6 +185,15 @@ export const courseMaterialsRelations = relations(courseMaterials, ({ one }) => 
     fields: [courseMaterials.questionId],
     references: [questions.id],
   }),
+  topic: one(topics, {
+    fields: [courseMaterials.topicId],
+    references: [topics.id],
+  }),
+  teacher: one(users, {
+    fields: [courseMaterials.teacherId],
+    references: [users.id],
+    relationName: 'MaterialUploader',
+  }),
 }));
 
 export const attemptsRelations = relations(attempts, ({ one, many }) => ({
@@ -168,6 +207,80 @@ export const attemptsRelations = relations(attempts, ({ one, many }) => ({
   }),
   studentAnswers: many(studentAnswers),
   proctorEvents: many(proctorEvents),
+  paperAnswerSheet: one(paperAnswerSheets),
+}));
+
+export const paperAnswerSheetsRelations = relations(paperAnswerSheets, ({ one, many }) => ({
+  attempt: one(attempts, {
+    fields: [paperAnswerSheets.attemptId],
+    references: [attempts.id],
+  }),
+  answers: many(paperAnswers),
+}));
+
+export const paperAnswersRelations = relations(paperAnswers, ({ one, many }) => ({
+  sheet: one(paperAnswerSheets, {
+    fields: [paperAnswers.sheetId],
+    references: [paperAnswerSheets.id],
+  }),
+  question: one(questions, {
+    fields: [paperAnswers.questionId],
+    references: [questions.id],
+  }),
+  selectedOptions: many(paperAnswerOptions),
+}));
+
+export const paperAnswerOptionsRelations = relations(paperAnswerOptions, ({ one }) => ({
+  paperAnswer: one(paperAnswers, {
+    fields: [paperAnswerOptions.paperAnswerId],
+    references: [paperAnswers.id],
+  }),
+  option: one(options, {
+    fields: [paperAnswerOptions.optionId],
+    references: [options.id],
+  }),
+}));
+
+export const testScanImportsRelations = relations(testScanImports, ({ one, many }) => ({
+  teacher: one(users, {
+    fields: [testScanImports.teacherId],
+    references: [users.id],
+  }),
+  test: one(tests, {
+    fields: [testScanImports.testId],
+    references: [tests.id],
+  }),
+  questions: many(testScanQuestions),
+}));
+
+export const testScanQuestionsRelations = relations(testScanQuestions, ({ one, many }) => ({
+  scan: one(testScanImports, {
+    fields: [testScanQuestions.scanId],
+    references: [testScanImports.id],
+  }),
+  options: many(testScanOptions),
+}));
+
+export const testScanOptionsRelations = relations(testScanOptions, ({ one }) => ({
+  question: one(testScanQuestions, {
+    fields: [testScanOptions.scanQuestionId],
+    references: [testScanQuestions.id],
+  }),
+}));
+
+export const testReportsRelations = relations(testReports, ({ one }) => ({
+  test: one(tests, {
+    fields: [testReports.testId],
+    references: [tests.id],
+  }),
+  question: one(questions, {
+    fields: [testReports.questionId],
+    references: [questions.id],
+  }),
+  reporter: one(users, {
+    fields: [testReports.reporterId],
+    references: [users.id],
+  }),
 }));
 
 export const studentAnswersRelations = relations(studentAnswers, ({ one, many }) => ({

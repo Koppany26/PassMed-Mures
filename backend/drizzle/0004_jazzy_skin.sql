@@ -1,0 +1,6 @@
+ALTER TABLE "course_materials" DROP CONSTRAINT "course_materials_exactly_one_target";--> statement-breakpoint
+ALTER TABLE "course_materials" ADD COLUMN "topic_id" integer;--> statement-breakpoint
+ALTER TABLE "course_materials" ADD COLUMN "teacher_id" integer;--> statement-breakpoint
+ALTER TABLE "course_materials" ADD CONSTRAINT "course_materials_topic_id_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "public"."topics"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "course_materials" ADD CONSTRAINT "course_materials_teacher_id_users_id_fk" FOREIGN KEY ("teacher_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "course_materials" ADD CONSTRAINT "course_materials_exactly_one_target" CHECK (("course_materials"."test_id" IS NOT NULL AND "course_materials"."question_id" IS NULL AND "course_materials"."topic_id" IS NULL) OR ("course_materials"."test_id" IS NULL AND "course_materials"."question_id" IS NOT NULL AND "course_materials"."topic_id" IS NULL) OR ("course_materials"."test_id" IS NULL AND "course_materials"."question_id" IS NULL AND "course_materials"."topic_id" IS NOT NULL));
