@@ -8,8 +8,8 @@ import {
     createStudentPracticeTest,
     updateTest, updateTestQuestion, addQuestionToTest, removeQuestionFromTest,
     reportTestIssue, getOpenTestReports, resolveTestReport,
-    getMyGroups, createGroup, inviteToGroup, assignTestToGroup, getGroupAttempts,
-    getMyGroupInvitations, acceptGroupInvitation,
+    getMyGroups, createGroup, deleteGroup, inviteToGroup, assignTestToGroup, getGroupAttempts,
+    getMyGroupInvitations, acceptGroupInvitation, joinGroupByCode,
     uploadTestFile, getImportPreview, uploadAnswerKey, approveImport
 } from './api.js';
 
@@ -83,6 +83,7 @@ async function loadUser() {
             document.getElementById('topicPracticePanel').classList.remove('hidden');
             document.getElementById('studentGroupsPanel').classList.remove('hidden');
             await loadCategories();
+            await loadStudentGroups();
         }
         await loadTests();
         if (currentUser.role === 'TEACHER' || currentUser.role === 'ADMIN') {
@@ -114,13 +115,56 @@ async function loadGroups() {
             const card = document.createElement('article');
             card.className = 'question-block';
             const heading = document.createElement('h4');
-            heading.textContent = `${group.name} · Meghívókód: ${group.joinCode}`;
+            heading.textContent = group.name;
+
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'btn btn-sm btn-danger group-delete-button';
+            deleteButton.textContent = 'Csoport törlése';
+            deleteButton.addEventListener('click', async () => {
+                const confirmed = window.confirm(
+                    `Biztosan törlöd a(z) "${group.name}" csoportot? A csoporttagságok, meghívók és teszt-hozzárendelések is törlődnek.`,
+                );
+                if (!confirmed) return;
+
+                deleteButton.disabled = true;
+                try {
+                    const result = await deleteGroup(group.id);
+                    showAlert(result.message, 'success');
+                    await loadGroups();
+                } catch (error) {
+                    showAlert(error.message);
+                    deleteButton.disabled = false;
+                }
+            });
+
+            const codeRow = document.createElement('div');
+            codeRow.className = 'group-code-row';
+            const codeLabel = document.createElement('span');
+            codeLabel.textContent = 'Csoportkód:';
+            const code = document.createElement('code');
+            code.className = 'group-code';
+            code.textContent = group.joinCode;
+            const copyButton = document.createElement('button');
+            copyButton.type = 'button';
+            copyButton.className = 'btn btn-sm btn-secondary';
+            copyButton.textContent = 'Kód másolása';
+            copyButton.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(group.joinCode);
+                    showAlert('A csoportkód a vágólapra másolva.', 'success');
+                } catch (error) {
+                    showAlert('A csoportkód másolása nem sikerült. Jelöld ki és másold ki kézzel: ' + group.joinCode);
+                }
+            });
+            codeRow.append(codeLabel, code, copyButton);
 
             const inviteRow = document.createElement('div');
             inviteRow.className = 'form-row';
             const email = document.createElement('input');
             email.type = 'email';
             email.placeholder = 'Diák e-mail-címe';
+            email.setAttribute('aria-label', `Diák e-mail-címe a(z) ${group.name} csoport meghívásához`);
             const inviteButton = document.createElement('button');
             inviteButton.type = 'button';
             inviteButton.className = 'btn btn-sm btn-secondary';
@@ -174,12 +218,32 @@ async function loadGroups() {
                     attemptsContainer.textContent = error.message;
                 }
             });
-            card.append(heading, inviteRow, assignRow, attemptsButton, attemptsContainer);
+            card.append(heading, deleteButton, codeRow, inviteRow, assignRow, attemptsButton, attemptsContainer);
             container.appendChild(card);
         });
     } catch (error) {
         container.textContent = error.message;
         showAlert(error.message);
+    }
+}
+
+async function loadStudentGroups() {
+    const container = document.getElementById('studentGroupsList');
+    container.replaceChildren();
+    try {
+        const data = await getMyGroups();
+        if (data.groups.length === 0) {
+            container.textContent = 'Még nem csatlakoztál csoporthoz.';
+            return;
+        }
+        data.groups.forEach(group => {
+            const item = document.createElement('p');
+            item.className = 'student-group-item';
+            item.textContent = group.name;
+            container.appendChild(item);
+        });
+    } catch (error) {
+        container.textContent = error.message;
     }
 }
 
@@ -230,7 +294,7 @@ async function loadGroupInvitations() {
                 try {
                     const result = await acceptGroupInvitation(invitation.id);
                     showAlert(result.message, 'success');
-                    await loadGroupInvitations();
+                    await Promise.all([loadGroupInvitations(), loadStudentGroups(), loadTests()]);
                 } catch (error) {
                     showAlert(error.message);
                 }
@@ -849,6 +913,12 @@ function fillTopicSelect(select, categoryId, selectedIds = []) {
 }
 
 function getSelectedTopicIds(select) {
+    if (select.tagName !== 'SELECT') {
+        return Array.from(
+            select.querySelectorAll('.import-topic-checkbox:checked'),
+            checkbox => Number(checkbox.value),
+        );
+    }
     return Array.from(select.selectedOptions, option => Number(option.value));
 }
 
@@ -1379,6 +1449,27 @@ document.getElementById('createGroupBtn').addEventListener('click', async () => 
     }
 });
 
+document.getElementById('joinGroupBtn').addEventListener('click', async () => {
+    const input = document.getElementById('groupJoinCode');
+    const joinCode = input.value.trim().toUpperCase();
+    if (!joinCode) {
+        showAlert('Add meg a tanártól kapott csoportkódot.');
+        return;
+    }
+    const button = document.getElementById('joinGroupBtn');
+    button.disabled = true;
+    try {
+        const result = await joinGroupByCode(joinCode);
+        input.value = '';
+        showAlert(result.message, 'success');
+        await Promise.all([loadStudentGroups(), loadTests()]);
+    } catch (error) {
+        showAlert(error.message);
+    } finally {
+        button.disabled = false;
+    }
+});
+
 // ======== TESZT IMPORT (feltöltés + beolvasás) ========
 let importToken = null;
 const importResult = document.getElementById('importResult');
@@ -1402,8 +1493,8 @@ function resetImportView() {
 
 function renderImportPreview(preview) {
     const previousTopicIds = Array.from(
-        document.querySelectorAll('#importQuestions .import-question-topics'),
-        select => getSelectedTopicIds(select),
+        document.querySelectorAll('#importQuestions .import-topic-options'),
+        options => getSelectedTopicIds(options),
     );
     document.getElementById('importTitle').value = preview.title || '';
     document.getElementById('importDesc').value = preview.description || '';
@@ -1426,18 +1517,22 @@ function renderImportPreview(preview) {
         ta.rows = 2;
         ta.style.width = '100%';
         block.appendChild(ta);
-        const topicLabel = document.createElement('label');
-        topicLabel.textContent = 'Témakörök (több is választható):';
-        const topicSelect = document.createElement('select');
-        topicSelect.className = 'import-question-topics';
-        topicSelect.multiple = true;
-        topicSelect.size = 4;
-        fillTopicSelect(
-            topicSelect,
+        const topicPicker = document.createElement('fieldset');
+        topicPicker.className = 'import-topic-picker';
+        const topicLabel = document.createElement('legend');
+        topicLabel.textContent = 'Kérdés témaköre';
+        const topicHint = document.createElement('p');
+        topicHint.className = 'import-topic-hint';
+        topicHint.textContent = 'Kattints a témakörökre a kijelöléshez. Többet is választhatsz.';
+        const topicOptions = document.createElement('div');
+        topicOptions.className = 'import-topic-options';
+        renderImportTopicOptions(
+            topicOptions,
             document.getElementById('importCategory').value,
-            q.topicIds || previousTopicIds[index] || [],
+            q.topicIds?.length ? q.topicIds : previousTopicIds[index] || [],
         );
-        block.append(topicLabel, topicSelect);
+        topicPicker.append(topicLabel, topicHint, topicOptions);
+        block.appendChild(topicPicker);
 
         q.options.forEach(opt => {
             const row = document.createElement('div');
@@ -1463,6 +1558,38 @@ function renderImportPreview(preview) {
     });
 }
 
+function renderImportTopicOptions(container, categoryId, selectedIds = []) {
+    container.replaceChildren();
+    const selected = new Set(selectedIds.map(Number));
+    const matchingTopics = topicList.filter(topic => String(topic.categoryId) === String(categoryId));
+
+    if (matchingTopics.length === 0) {
+        const emptyMessage = document.createElement('span');
+        emptyMessage.className = 'import-topic-empty';
+        emptyMessage.textContent = categoryId
+            ? 'Ehhez a vizsgatárgyhoz még nincs témakör.'
+            : 'A témakörök megjelenítéséhez előbb válassz vizsgatárgyat.';
+        container.appendChild(emptyMessage);
+        return;
+    }
+
+    matchingTopics.forEach(topic => {
+        const label = document.createElement('label');
+        label.className = 'import-topic-option';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'import-topic-checkbox';
+        checkbox.value = String(topic.id);
+        checkbox.checked = selected.has(topic.id);
+        if (checkbox.checked) label.classList.add('is-selected');
+        checkbox.addEventListener('change', () => {
+            label.classList.toggle('is-selected', checkbox.checked);
+        });
+        label.append(checkbox, document.createTextNode(topic.name));
+        container.appendChild(label);
+    });
+}
+
 function collectImportData() {
     const questions = [];
     document.querySelectorAll('#importQuestions .import-question').forEach(block => {
@@ -1479,7 +1606,7 @@ function collectImportData() {
             questions.push({
                 text,
                 options: opts,
-                topicIds: getSelectedTopicIds(block.querySelector('.import-question-topics')),
+                topicIds: getSelectedTopicIds(block.querySelector('.import-topic-options')),
             });
         }
     });
@@ -1527,8 +1654,8 @@ document.getElementById('baremBtn').addEventListener('click', async () => {
     }
 });
 document.getElementById('importCategory').addEventListener('change', event => {
-    document.querySelectorAll('#importQuestions .import-question-topics').forEach(select => {
-        fillTopicSelect(select, event.target.value);
+    document.querySelectorAll('#importQuestions .import-topic-options').forEach(options => {
+        renderImportTopicOptions(options, event.target.value, getSelectedTopicIds(options));
     });
 });
 

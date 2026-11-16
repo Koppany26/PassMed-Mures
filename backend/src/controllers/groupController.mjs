@@ -68,6 +68,29 @@ export const createGroup = async (req, res) => {
     }
 };
 
+export const deleteGroup = async (req, res) => {
+    try {
+        const groupId = Number(req.params.groupId);
+        if (!Number.isInteger(groupId) || groupId < 1) {
+            return res.status(400).json({ success: false, message: 'Érvénytelen csoportazonosító.' });
+        }
+
+        const group = req.user.role === 'ADMIN'
+            ? (await db.select({ id: groups.id }).from(groups)
+                .where(eq(groups.id, groupId)).limit(1))[0]
+            : await findOwnedGroup(groupId, req.user.id);
+        if (!group) {
+            return res.status(404).json({ success: false, message: 'A csoport nem található.' });
+        }
+
+        await db.delete(groups).where(eq(groups.id, groupId));
+        return res.status(200).json({ success: true, message: 'A csoport törölve.' });
+    } catch (error) {
+        console.error('Csoporttörlési hiba:', error);
+        return res.status(500).json({ success: false, message: 'A csoport törlése nem sikerült.' });
+    }
+};
+
 export const inviteToGroup = async (req, res) => {
     try {
         const groupId = Number(req.params.groupId);
@@ -159,6 +182,44 @@ export const acceptGroupInvitation = async (req, res) => {
     } catch (error) {
         console.error('Meghívó elfogadási hiba:', error);
         return res.status(500).json({ success: false, message: 'A meghívó elfogadása nem sikerült.' });
+    }
+};
+
+export const joinGroupByCode = async (req, res) => {
+    try {
+        const joinCode = typeof req.body?.joinCode === 'string'
+            ? req.body.joinCode.trim().toUpperCase()
+            : '';
+        if (!/^[A-F0-9]{12}$/.test(joinCode)) {
+            return res.status(400).json({ success: false, message: 'Adj meg egy érvényes csoportkódot.' });
+        }
+
+        const email = await getUserEmail(req.user.id);
+        if (!email) return res.status(404).json({ success: false, message: 'Felhasználó nem található.' });
+        const groupResult = await db.select({ id: groups.id }).from(groups)
+            .where(eq(groups.joinCode, joinCode)).limit(1);
+        if (groupResult.length === 0) {
+            return res.status(404).json({ success: false, message: 'Nem található csoport ezzel a kóddal.' });
+        }
+
+        await db.transaction(async (tx) => {
+            await tx.insert(groupMembers).values({
+                groupId: groupResult[0].id,
+                studentId: req.user.id,
+            }).onConflictDoNothing();
+            await tx.update(invitations).set({
+                status: 'ACCEPTED',
+                acceptedAt: new Date(),
+            }).where(and(
+                eq(invitations.groupId, groupResult[0].id),
+                eq(invitations.email, email),
+                eq(invitations.status, 'PENDING'),
+            ));
+        });
+        return res.status(200).json({ success: true, message: 'Sikeresen csatlakoztál a csoporthoz.' });
+    } catch (error) {
+        console.error('Csoportkódos csatlakozási hiba:', error);
+        return res.status(500).json({ success: false, message: 'A csoporthoz csatlakozás nem sikerült.' });
     }
 };
 

@@ -111,7 +111,19 @@
         </div>
 
         <div id="studentGroupsPanel" class="card hidden">
-            <h2>Csoportmeghívók</h2>
+            <h2>Csoportok</h2>
+            <div class="teacher-panel">
+                <h3>Csatlakozás csoportkóddal</h3>
+                <p class="editor-hint">A tanártól kapott csoportkóddal meghívó nélkül is csatlakozhatsz.</p>
+                <div class="form-row">
+                    <label class="sr-only" for="groupJoinCode">Csoportkód</label>
+                    <input type="text" id="groupJoinCode" placeholder="Csoportkód" maxlength="12" autocomplete="off">
+                    <button class="btn btn-sm btn-primary" id="joinGroupBtn" type="button">Csatlakozás</button>
+                </div>
+            </div>
+            <h3>Csoportjaim</h3>
+            <div id="studentGroupsList"></div>
+            <h3>Meghívók e-mail-cím alapján</h3>
             <div id="studentInvitationsList"></div>
         </div>
 
@@ -139,6 +151,7 @@
 
             <div class="teacher-panel">
                 <h3>Diákcsoportok</h3>
+                <p class="editor-hint">A diákokat e-mail-címük alapján meghívhatod, vagy megoszthatod velük a csoport egyedi kódját.</p>
                 <div class="form-row">
                     <input type="text" id="newGroupName" placeholder="Új csoport neve">
                     <button class="btn btn-sm btn-primary" id="createGroupBtn" type="button">Csoport létrehozása</button>

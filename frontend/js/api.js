@@ -143,6 +143,8 @@ export const resolveTestReport = (reportId) =>
 export const getMyGroups = () => apiFetch('/groups');
 export const createGroup = (name) =>
     apiFetch('/groups', { method: 'POST', body: JSON.stringify({ name }) });
+export const deleteGroup = (groupId) =>
+    apiFetch(`/groups/${groupId}`, { method: 'DELETE' });
 export const inviteToGroup = (groupId, email) =>
     apiFetch(`/groups/${groupId}/invitations`, {
         method: 'POST',
@@ -157,6 +159,11 @@ export const getGroupAttempts = (groupId) => apiFetch(`/groups/${groupId}/attemp
 export const getMyGroupInvitations = () => apiFetch('/groups/invitations');
 export const acceptGroupInvitation = (invitationId) =>
     apiFetch(`/groups/invitations/${invitationId}/accept`, { method: 'POST' });
+export const joinGroupByCode = (joinCode) =>
+    apiFetch('/groups/join', {
+        method: 'POST',
+        body: JSON.stringify({ joinCode }),
+    });
 
 // --- KITÖLTÉSEK ---
 export const startAttempt = (testId) =>
